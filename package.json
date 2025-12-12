@@ -1,0 +1,22 @@
+{
+  "name": "oracle-test-interface",
+  "version": "1.0.0",
+  "description": "Interface de test pour base de données Oracle",
+  "scripts": {
+    "server": "node server.js",
+    "client": "react-scripts start",
+    "dev": "concurrently \"npm run server\" \"npm run client\""
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "oracledb": "^6.0.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "^5.0.1",
+    "lucide-react": "^0.263.1"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}
