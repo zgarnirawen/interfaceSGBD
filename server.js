@@ -1,4 +1,5 @@
-// server.js - Backend Express avec Oracle
+// server.js - Backend Express avec Oracle (VERSION CORRIGÉE)
+require('dotenv').config();
 const express = require('express');
 const oracledb = require('oracledb');
 const cors = require('cors');
@@ -7,11 +8,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Configuration Oracle
+// ✅ Configuration Oracle depuis .env
 const dbConfig = {
-  user: 'SYSTEM',
-  password: 'rawen123',
-  connectString: 'localhost:1521/xe'
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  connectString: process.env.DB_CONNECT_STRING
 };
 
 // Pool de connexions
@@ -22,53 +23,41 @@ async function initialize() {
   try {
     pool = await oracledb.createPool(dbConfig);
     console.log('✓ Pool de connexions créé');
+    console.log(`✓ Connecté en tant que: ${dbConfig.user}`);
   } catch (err) {
     poolError = err.message;
     console.error('✗ Erreur connexion Oracle:', err.message);
-    console.log('💡 Veuillez mettre à jour les identifiants dans server.js:');
-    console.log('   - user: votre_user');
-    console.log('   - password: votre_password');
-    console.log('   - connectString: localhost:1521/xe');
+    console.log('💡 Vérifiez votre fichier .env');
   }
 }
 
 initialize();
 
-// ==================== DONNÉES DE TEST ====================
-const mockCommandes = [
-  [1, new Date('2025-01-15'), 'En préparation', 1, 'Dupont', 'Jean', 1500],
-  [2, new Date('2025-01-10'), 'Expédiée', 2, 'Martin', 'Marie', 2300],
-  [3, new Date('2025-01-05'), 'Livrée', 1, 'Dupont', 'Jean', 1200]
-];
-
-const mockLivraisons = [
-  [1, new Date('2025-01-20'), 'Livrée', 'DHL', 1, 'Dupont', 'Jean'],
-  [2, new Date('2025-01-18'), 'En cours', 'FedEx', 2, 'Martin', 'Marie']
-];
-
-const mockUsers = [
-  [1, 'Dupont', 'Jean', 'jdupont', 'Responsable', new Date('2020-01-15'), '06 12 34 56 78'],
-  [2, 'Martin', 'Marie', 'mmartin', 'Vendeur', new Date('2021-06-10'), '06 87 65 43 21']
-];
-
-const mockClients = [
-  [1, 'Dupont', 'Jean', '123 Rue de Paris'],
-  [2, 'Martin', 'Marie', '456 Avenue de Lyon']
-];
-
-const mockArticles = [
-  [1, 'Produit A', 'Description A', 100, 500, 50, 150],
-  [2, 'Produit B', 'Description B', 200, 300, 20, 100]
-];
-
-const mockPostes = [
-  [1, 'Responsable'],
-  [2, 'Vendeur'],
-  [3, 'Livreur']
-];
-
-
 // ==================== GESTION DES COMMANDES ====================
+
+// Liste toutes les commandes
+app.get('/api/commandes', async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const result = await connection.execute(
+      `SELECT c.nocde, c.datecde, c.etatcde, c.noclt,
+              cl.nomclt, cl.prenomclt,
+              NVL(SUM(l.qtecde * a.prixV), 0) AS montant_total
+       FROM commandes c
+       JOIN clients cl ON c.noclt = cl.noclt
+       LEFT JOIN ligcdes l ON c.nocde = l.nocde
+       LEFT JOIN articles a ON l.refart = a.refart
+       GROUP BY c.nocde, c.datecde, c.etatcde, c.noclt, cl.nomclt, cl.prenomclt
+       ORDER BY c.datecde DESC`
+    );
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
 
 // Ajouter une commande
 app.post('/api/commandes/ajouter', async (req, res) => {
@@ -167,26 +156,23 @@ app.get('/api/commandes/numero/:nocde', async (req, res) => {
   }
 });
 
-// Chercher commandes par client
-app.get('/api/commandes/client/:noclt', async (req, res) => {
+// ==================== GESTION DES LIVRAISONS ====================
+
+// Liste toutes les livraisons
+app.get('/api/livraisons', async (req, res) => {
   let connection;
   try {
-    const noclt = parseInt(req.params.noclt);
     connection = await pool.getConnection();
-    
     const result = await connection.execute(
-      `SELECT c.nocde, c.datecde, c.etatcde,
-              COUNT(l.refart) AS nb_articles,
-              NVL(SUM(l.qtecde * a.prixV), 0) AS montant_total
-       FROM commandes c
-       LEFT JOIN ligcdes l ON c.nocde = l.nocde
-       LEFT JOIN articles a ON l.refart = a.refart
-       WHERE c.noclt = :noclt
-       GROUP BY c.nocde, c.datecde, c.etatcde
-       ORDER BY c.datecde DESC`,
-      { noclt }
+      `SELECT lv.nocde, lv.dateliv, lv.livreur, lv.modepay, lv.etatliv,
+              p.nompers, p.prenompers, 
+              c.noclt, cl.nomclt, cl.prenomclt
+       FROM LivraisonCom lv
+       JOIN personnel p ON lv.livreur = p.idpers
+       JOIN commandes c ON lv.nocde = c.nocde
+       JOIN clients cl ON c.noclt = cl.noclt
+       ORDER BY lv.dateliv DESC`
     );
-    
     res.json({ success: true, data: result.rows });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -194,30 +180,6 @@ app.get('/api/commandes/client/:noclt', async (req, res) => {
     if (connection) await connection.close();
   }
 });
-
-// Liste toutes les commandes
-app.get('/api/commandes', async (req, res) => {
-  try {
-    if (!pool) {
-      return res.json({ success: true, data: mockCommandes });
-    }
-    let connection = await pool.getConnection();
-    const result = await connection.execute(
-      `SELECT c.nocde, c.datecde, c.etatcde, c.noclt,
-              cl.nomclt, cl.prenomclt
-       FROM commandes c
-       JOIN clients cl ON c.noclt = cl.noclt
-       ORDER BY c.datecde DESC`
-    );
-    await connection.close();
-    res.json({ success: true, data: result.rows });
-  } catch (err) {
-    console.error('Erreur commandes:', err.message);
-    res.json({ success: true, data: mockCommandes });
-  }
-});
-
-// ==================== GESTION DES LIVRAISONS ====================
 
 // Ajouter livraison
 app.post('/api/livraisons/ajouter', async (req, res) => {
@@ -292,49 +254,6 @@ app.delete('/api/livraisons/supprimer/:nocde', async (req, res) => {
   }
 });
 
-// Chercher livraisons par commande
-app.get('/api/livraisons/commande/:nocde', async (req, res) => {
-  let connection;
-  try {
-    const nocde = parseInt(req.params.nocde);
-    connection = await pool.getConnection();
-    
-    const result = await connection.execute(
-      `SELECT * FROM LivraisonCom WHERE nocde = :nocde`,
-      { nocde }
-    );
-    
-    res.json({ success: true, data: result.rows });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  } finally {
-    if (connection) await connection.close();
-  }
-});
-
-// Liste toutes les livraisons
-app.get('/api/livraisons', async (req, res) => {
-  try {
-    if (!pool) {
-      return res.json({ success: true, data: mockLivraisons });
-    }
-    let connection = await pool.getConnection();
-    const result = await connection.execute(
-      `SELECT lv.*, p.nompers, p.prenompers, c.noclt, cl.nomclt
-       FROM LivraisonCom lv
-       JOIN personnel p ON lv.livreur = p.idpers
-       JOIN commandes c ON lv.nocde = c.nocde
-       JOIN clients cl ON c.noclt = cl.noclt
-       ORDER BY lv.dateliv DESC`
-    );
-    await connection.close();
-    res.json({ success: true, data: result.rows });
-  } catch (err) {
-    console.error('Erreur livraisons:', err.message);
-    res.json({ success: true, data: mockLivraisons });
-  }
-});
-
 // ==================== GESTION DES UTILISATEURS ====================
 
 // Authentifier
@@ -373,7 +292,29 @@ app.post('/api/users/login', async (req, res) => {
   }
 });
 
-// Ajouter utilisateur
+// Liste des utilisateurs (TOUS LES ATTRIBUTS)
+app.get('/api/users', async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const result = await connection.execute(
+      `SELECT p.idpers, p.nompers, p.prenompers, p.adrpers, p.villepers,
+              p.telpers, p.d_embauche, p.login, p.codeposte,
+              po.libelle AS poste_libelle
+       FROM personnel p
+       JOIN postes po ON p.codeposte = po.codeposte
+       WHERE p.login NOT LIKE '%_INACTIF_%'
+       ORDER BY po.libelle, p.nompers`
+    );
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Ajouter utilisateur (TOUS LES ATTRIBUTS)
 app.post('/api/users/ajouter', async (req, res) => {
   let connection;
   try {
@@ -399,7 +340,7 @@ app.post('/api/users/ajouter', async (req, res) => {
   }
 });
 
-// Modifier utilisateur
+// Modifier utilisateur (TOUS LES ATTRIBUTS)
 app.put('/api/users/modifier', async (req, res) => {
   let connection;
   try {
@@ -425,20 +366,69 @@ app.put('/api/users/modifier', async (req, res) => {
   }
 });
 
-// Liste des utilisateurs
-app.get('/api/users', async (req, res) => {
+// Supprimer utilisateur
+app.delete('/api/users/supprimer/:idpers', async (req, res) => {
+  let connection;
+  try {
+    const idpers = parseInt(req.params.idpers);
+    connection = await pool.getConnection();
+    
+    await connection.execute(
+      `BEGIN
+        pkg_gestion_utilisateurs.supprimer_utilisateur(:idpers);
+      END;`,
+      { idpers },
+      { autoCommit: true }
+    );
+    
+    res.json({ success: true, message: 'Utilisateur supprimé avec succès' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// ==================== GESTION DES PRIVILÈGES ====================
+
+// Créer schémas externes
+app.post('/api/privileges/creer-schemas', async (req, res) => {
   let connection;
   try {
     connection = await pool.getConnection();
-    const result = await connection.execute(
-      `SELECT p.idpers, p.nompers, p.prenompers, p.login, 
-              po.libelle, p.d_embauche, p.telpers, p.villepers
-       FROM personnel p
-       JOIN postes po ON p.codeposte = po.codeposte
-       WHERE p.login NOT LIKE '%_INACTIF_%'
-       ORDER BY po.libelle, p.nompers`
+    
+    await connection.execute(
+      `BEGIN
+        pkg_gestion_privileges.creer_schemas_externes;
+      END;`,
+      {},
+      { autoCommit: true }
     );
-    res.json({ success: true, data: result.rows });
+    
+    res.json({ success: true, message: 'Schémas externes créés avec succès' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Gérer privilèges par poste
+app.post('/api/privileges/gerer-par-poste', async (req, res) => {
+  let connection;
+  try {
+    const { username, codeposte } = req.body;
+    connection = await pool.getConnection();
+    
+    await connection.execute(
+      `BEGIN
+        pkg_gestion_privileges.gerer_privileges_par_poste(:username, :codeposte);
+      END;`,
+      { username, codeposte },
+      { autoCommit: true }
+    );
+    
+    res.json({ success: true, message: 'Privilèges accordés avec succès' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   } finally {
@@ -448,13 +438,15 @@ app.get('/api/users', async (req, res) => {
 
 // ==================== DONNÉES DE RÉFÉRENCE ====================
 
-// Liste des clients
+// Liste des clients (TOUS LES ATTRIBUTS)
 app.get('/api/clients', async (req, res) => {
   let connection;
   try {
     connection = await pool.getConnection();
     const result = await connection.execute(
-      `SELECT * FROM clients ORDER BY nomclt`
+      `SELECT noclt, nomclt, prenomclt, adrclt, code_postal, villeclt, telclt, adrmail
+       FROM clients 
+       ORDER BY nomclt`
     );
     res.json({ success: true, data: result.rows });
   } catch (err) {
@@ -464,31 +456,35 @@ app.get('/api/clients', async (req, res) => {
   }
 });
 
-// Liste des articles
+// Liste des articles (TOUS LES ATTRIBUTS)
 app.get('/api/articles', async (req, res) => {
+  let connection;
   try {
-    if (!pool) {
-      return res.json({ success: true, data: mockArticles });
-    }
-    let connection = await pool.getConnection();
+    connection = await pool.getConnection();
     const result = await connection.execute(
-      `SELECT * FROM articles WHERE supp = 'N' ORDER BY designation`
+      `SELECT refart, designation, prixA, prixV, codetva, categorie, qtestk, supp
+       FROM articles 
+       WHERE supp = 'N' 
+       ORDER BY designation`
     );
-    await connection.close();
     res.json({ success: true, data: result.rows });
   } catch (err) {
-    console.error('Erreur articles:', err.message);
-    res.json({ success: true, data: mockArticles });
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (connection) await connection.close();
   }
 });
 
-// Liste du personnel (livreurs)
+// Liste du personnel (TOUS LES ATTRIBUTS)
 app.get('/api/personnel', async (req, res) => {
   let connection;
   try {
     connection = await pool.getConnection();
     const result = await connection.execute(
-      `SELECT p.*, po.libelle FROM personnel p
+      `SELECT p.idpers, p.nompers, p.prenompers, p.adrpers, p.villepers, 
+              p.telpers, p.d_embauche, p.login, p.codeposte,
+              po.libelle AS poste_libelle
+       FROM personnel p
        JOIN postes po ON p.codeposte = po.codeposte
        ORDER BY p.nompers`
     );
@@ -502,31 +498,11 @@ app.get('/api/personnel', async (req, res) => {
 
 // Liste des postes
 app.get('/api/postes', async (req, res) => {
-  try {
-    if (!pool) {
-      return res.json({ success: true, data: mockPostes });
-    }
-    let connection = await pool.getConnection();
-    const result = await connection.execute(
-      `SELECT * FROM postes ORDER BY libelle`
-    );
-    await connection.close();
-    res.json({ success: true, data: result.rows });
-  } catch (err) {
-    console.error('Erreur postes:', err.message);
-    res.json({ success: true, data: mockPostes });
-  }
-});
-
-// ==================== VUES ET STATISTIQUES ====================
-
-// Vue livraisons en cours
-app.get('/api/vues/livraisons-en-cours', async (req, res) => {
   let connection;
   try {
     connection = await pool.getConnection();
     const result = await connection.execute(
-      `SELECT * FROM vue_livraisons_en_cours`
+      `SELECT codeposte, libelle, indice FROM postes ORDER BY libelle`
     );
     res.json({ success: true, data: result.rows });
   } catch (err) {
@@ -536,17 +512,56 @@ app.get('/api/vues/livraisons-en-cours', async (req, res) => {
   }
 });
 
-// Vue statistiques articles
-app.get('/api/vues/stats-articles', async (req, res) => {
+// ==================== STATISTIQUES ====================
+
+// Statistiques globales
+app.get('/api/stats/global', async (req, res) => {
   let connection;
   try {
     connection = await pool.getConnection();
-    const result = await connection.execute(
-      `SELECT * FROM vue_stats_articles`
+    
+    const stats = await connection.execute(
+      `SELECT 
+        (SELECT COUNT(*) FROM commandes) AS nb_commandes,
+        (SELECT COUNT(*) FROM LivraisonCom) AS nb_livraisons,
+        (SELECT COUNT(*) FROM personnel WHERE login NOT LIKE '%_INACTIF_%') AS nb_users,
+        (SELECT COUNT(*) FROM articles WHERE supp = 'N') AS nb_articles,
+        (SELECT COUNT(*) FROM clients) AS nb_clients
+       FROM dual`
     );
-    res.json({ success: true, data: result.rows });
+    
+    res.json({ success: true, data: stats.rows[0] });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Test de connexion
+app.get('/api/test-connection', async (req, res) => {
+  if (poolError) {
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Erreur de connexion à la base de données',
+      error: poolError 
+    });
+  }
+  
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const result = await connection.execute('SELECT 1 FROM DUAL');
+    res.json({ 
+      success: true, 
+      message: 'Connexion réussie',
+      user: dbConfig.user
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      success: false, 
+      message: err.message 
+    });
   } finally {
     if (connection) await connection.close();
   }
@@ -554,13 +569,20 @@ app.get('/api/vues/stats-articles', async (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`Serveur démarré sur le port ${PORT}`);
+  console.log(`\n🚀 Serveur démarré sur le port ${PORT}`);
+  console.log(`📊 Interface: http://localhost:${PORT}`);
+  console.log(`🔗 API: http://localhost:${PORT}/api`);
+  if (poolError) {
+    console.log(`\n⚠️  ERREUR: ${poolError}`);
+  }
 });
 
 process.on('SIGINT', async () => {
   try {
-    await pool.close();
-    console.log('Pool fermé');
+    if (pool) {
+      await pool.close();
+      console.log('\n✓ Pool fermé proprement');
+    }
     process.exit(0);
   } catch (err) {
     console.error(err);
