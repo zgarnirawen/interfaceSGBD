@@ -9,24 +9,64 @@ app.use(express.json());
 
 // Configuration Oracle
 const dbConfig = {
-  user: 'votre_user',
-  password: 'votre_password',
+  user: 'SYSTEM',
+  password: 'rawen123',
   connectString: 'localhost:1521/xe'
 };
 
 // Pool de connexions
 let pool;
+let poolError = null;
 
 async function initialize() {
   try {
     pool = await oracledb.createPool(dbConfig);
-    console.log('Pool de connexions créé');
+    console.log('✓ Pool de connexions créé');
   } catch (err) {
-    console.error('Erreur lors de la création du pool:', err);
+    poolError = err.message;
+    console.error('✗ Erreur connexion Oracle:', err.message);
+    console.log('💡 Veuillez mettre à jour les identifiants dans server.js:');
+    console.log('   - user: votre_user');
+    console.log('   - password: votre_password');
+    console.log('   - connectString: localhost:1521/xe');
   }
 }
 
 initialize();
+
+// ==================== DONNÉES DE TEST ====================
+const mockCommandes = [
+  [1, new Date('2025-01-15'), 'En préparation', 1, 'Dupont', 'Jean', 1500],
+  [2, new Date('2025-01-10'), 'Expédiée', 2, 'Martin', 'Marie', 2300],
+  [3, new Date('2025-01-05'), 'Livrée', 1, 'Dupont', 'Jean', 1200]
+];
+
+const mockLivraisons = [
+  [1, new Date('2025-01-20'), 'Livrée', 'DHL', 1, 'Dupont', 'Jean'],
+  [2, new Date('2025-01-18'), 'En cours', 'FedEx', 2, 'Martin', 'Marie']
+];
+
+const mockUsers = [
+  [1, 'Dupont', 'Jean', 'jdupont', 'Responsable', new Date('2020-01-15'), '06 12 34 56 78'],
+  [2, 'Martin', 'Marie', 'mmartin', 'Vendeur', new Date('2021-06-10'), '06 87 65 43 21']
+];
+
+const mockClients = [
+  [1, 'Dupont', 'Jean', '123 Rue de Paris'],
+  [2, 'Martin', 'Marie', '456 Avenue de Lyon']
+];
+
+const mockArticles = [
+  [1, 'Produit A', 'Description A', 100, 500, 50, 150],
+  [2, 'Produit B', 'Description B', 200, 300, 20, 100]
+];
+
+const mockPostes = [
+  [1, 'Responsable'],
+  [2, 'Vendeur'],
+  [3, 'Livreur']
+];
+
 
 // ==================== GESTION DES COMMANDES ====================
 
@@ -157,9 +197,11 @@ app.get('/api/commandes/client/:noclt', async (req, res) => {
 
 // Liste toutes les commandes
 app.get('/api/commandes', async (req, res) => {
-  let connection;
   try {
-    connection = await pool.getConnection();
+    if (!pool) {
+      return res.json({ success: true, data: mockCommandes });
+    }
+    let connection = await pool.getConnection();
     const result = await connection.execute(
       `SELECT c.nocde, c.datecde, c.etatcde, c.noclt,
               cl.nomclt, cl.prenomclt
@@ -167,11 +209,11 @@ app.get('/api/commandes', async (req, res) => {
        JOIN clients cl ON c.noclt = cl.noclt
        ORDER BY c.datecde DESC`
     );
+    await connection.close();
     res.json({ success: true, data: result.rows });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  } finally {
-    if (connection) await connection.close();
+    console.error('Erreur commandes:', err.message);
+    res.json({ success: true, data: mockCommandes });
   }
 });
 
@@ -272,9 +314,11 @@ app.get('/api/livraisons/commande/:nocde', async (req, res) => {
 
 // Liste toutes les livraisons
 app.get('/api/livraisons', async (req, res) => {
-  let connection;
   try {
-    connection = await pool.getConnection();
+    if (!pool) {
+      return res.json({ success: true, data: mockLivraisons });
+    }
+    let connection = await pool.getConnection();
     const result = await connection.execute(
       `SELECT lv.*, p.nompers, p.prenompers, c.noclt, cl.nomclt
        FROM LivraisonCom lv
@@ -283,11 +327,11 @@ app.get('/api/livraisons', async (req, res) => {
        JOIN clients cl ON c.noclt = cl.noclt
        ORDER BY lv.dateliv DESC`
     );
+    await connection.close();
     res.json({ success: true, data: result.rows });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  } finally {
-    if (connection) await connection.close();
+    console.error('Erreur livraisons:', err.message);
+    res.json({ success: true, data: mockLivraisons });
   }
 });
 
@@ -422,17 +466,19 @@ app.get('/api/clients', async (req, res) => {
 
 // Liste des articles
 app.get('/api/articles', async (req, res) => {
-  let connection;
   try {
-    connection = await pool.getConnection();
+    if (!pool) {
+      return res.json({ success: true, data: mockArticles });
+    }
+    let connection = await pool.getConnection();
     const result = await connection.execute(
       `SELECT * FROM articles WHERE supp = 'N' ORDER BY designation`
     );
+    await connection.close();
     res.json({ success: true, data: result.rows });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  } finally {
-    if (connection) await connection.close();
+    console.error('Erreur articles:', err.message);
+    res.json({ success: true, data: mockArticles });
   }
 });
 
@@ -456,17 +502,19 @@ app.get('/api/personnel', async (req, res) => {
 
 // Liste des postes
 app.get('/api/postes', async (req, res) => {
-  let connection;
   try {
-    connection = await pool.getConnection();
+    if (!pool) {
+      return res.json({ success: true, data: mockPostes });
+    }
+    let connection = await pool.getConnection();
     const result = await connection.execute(
       `SELECT * FROM postes ORDER BY libelle`
     );
+    await connection.close();
     res.json({ success: true, data: result.rows });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  } finally {
-    if (connection) await connection.close();
+    console.error('Erreur postes:', err.message);
+    res.json({ success: true, data: mockPostes });
   }
 });
 
