@@ -1,1 +1,2147 @@
-// Backup du fichier original avant correction
+import React, { useState, useEffect } from 'react';
+import { 
+  AlertCircle, CheckCircle, Package, Truck, Users, BarChart3, 
+  Plus, Trash2, Edit, Shield, Database, X, FileText, Settings
+} from 'lucide-react';
+
+const API_URL = 'http://localhost:3001/api';
+
+function App() {
+  const [activeTab, setActiveTab] = useState('commandes');
+  const [notification, setNotification] = useState(null);
+
+  const showNotification = (message, type = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 4000);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
+      {notification && (
+        <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-2xl ${
+          notification.type === 'success' ? 'bg-green-500' : 'bg-red-500'
+        } text-white flex items-center gap-2`}>
+          {notification.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
+          <span className="font-medium">{notification.message}</span>
+        </div>
+      )}
+
+      <header className="bg-gradient-to-r from-blue-600 via-blue-700 to-purple-600 text-white shadow-2xl">
+        <div className="container mx-auto px-6 py-8">
+          <h1 className="text-4xl font-bold mb-2 flex items-center gap-3">
+            <Database size={40} />
+            Système de Gestion Oracle Complet
+          </h1>
+          <p className="text-blue-100 text-lg">
+            Interface complète • Tous les packages • Recherche avancée • Statistiques en temps réel
+          </p>
+        </div>
+      </header>
+
+      <div className="container mx-auto px-6 py-6">
+        <nav className="bg-white rounded-xl shadow-lg mb-6 overflow-hidden">
+          <div className="flex overflow-x-auto">
+            <TabButton active={activeTab === 'commandes'} onClick={() => setActiveTab('commandes')} icon={<Package />} label="Commandes" />
+            <TabButton active={activeTab === 'livraisons'} onClick={() => setActiveTab('livraisons')} icon={<Truck />} label="Livraisons" />
+            <TabButton active={activeTab === 'users'} onClick={() => setActiveTab('users')} icon={<Users />} label="Utilisateurs" />
+            <TabButton active={activeTab === 'privileges'} onClick={() => setActiveTab('privileges')} icon={<Shield />} label="Privilèges" />
+            <TabButton active={activeTab === 'packages'} onClick={() => setActiveTab('packages')} icon={<Settings />} label="Packages" />
+            <TabButton active={activeTab === 'data'} onClick={() => setActiveTab('data')} icon={<Database />} label="Données" />
+            <TabButton active={activeTab === 'stats'} onClick={() => setActiveTab('stats')} icon={<BarChart3 />} label="Statistiques" />
+          </div>
+        </nav>
+
+        <div className="bg-white rounded-xl shadow-xl p-8">
+          {activeTab === 'commandes' && <CommandesSection showNotification={showNotification} />}
+          {activeTab === 'livraisons' && <LivraisonsSection showNotification={showNotification} />}
+          {activeTab === 'users' && <UsersSection showNotification={showNotification} />}
+          {activeTab === 'privileges' && <PrivilegesSection showNotification={showNotification} />}
+          {activeTab === 'packages' && <PackagesSection />}
+          {activeTab === 'data' && <DataSection showNotification={showNotification} />}
+          {activeTab === 'stats' && <StatsSection showNotification={showNotification} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TabButton({ active, onClick, icon, label }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-2 px-6 py-4 border-b-4 transition-all whitespace-nowrap font-semibold ${
+        active 
+          ? 'border-blue-600 text-blue-600 bg-blue-50' 
+          : 'border-transparent text-gray-600 hover:text-blue-600 hover:bg-gray-50'
+      }`}
+    >
+      {React.cloneElement(icon, { size: 20 })}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+// Composant SearchBar réutilisable
+function SearchBar({ value, onChange, onSearch, onReset, placeholder = "Rechercher..." }) {
+  return (
+    <div className="flex gap-3">
+      <div className="flex-1 relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        />
+      </div>
+      <button
+        onClick={onSearch}
+        className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 font-medium flex items-center gap-2"
+      >
+        <Search size={20} />
+        Rechercher
+      </button>
+      <button
+        onClick={onReset}
+        className="bg-gray-600 text-white px-4 py-3 rounded-lg hover:bg-gray-700"
+        title="Réinitialiser"
+      >
+        <RefreshCw size={20} />
+      </button>
+    </div>
+  );
+}
+
+// ==================== SECTION COMMANDES ====================
+function CommandesSection({ showNotification }) {
+  const [commandes, setCommandes] = useState([]);
+  const [clients, setClients] = useState([]);
+  const [articles, setArticles] = useState([]);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [formData, setFormData] = useState({ noclt: '', refart: '', qtecde: '' });
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [cmdRes, clRes, artRes] = await Promise.all([
+        fetch(`${API_URL}/commandes`),
+        fetch(`${API_URL}/clients`),
+        fetch(`${API_URL}/articles`)
+      ]);
+      const [cmdData, clData, artData] = await Promise.all([
+        cmdRes.json(), 
+        clRes.json(), 
+        artRes.json()
+      ]);
+      if (cmdData.success) setCommandes(cmdData.data);
+      if (clData.success) setClients(clData.data);
+      if (artData.success) setArticles(artData.data);
+    } catch (err) {
+      showNotification('❌ Erreur chargement données', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddCommande = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${API_URL}/commandes/ajouter`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      const data = await res.json();
+      if (data.success) {
+        showNotification('✅ Commande ajoutée avec succès');
+        setShowAddForm(false);
+        setFormData({ noclt: '', refart: '', qtecde: '' });
+        loadData();
+      } else {
+        showNotification(data.message, 'error');
+      }
+    } catch (err) {
+      showNotification('❌ Erreur lors de l\'ajout', 'error');
+    }
+  };
+
+  const handleModifierEtat = async (nocde) => {
+    const etat = prompt('Nouvel état (EC/PR/LI/SO/AN/AL):');
+    if (!etat || !['EC', 'PR', 'LI', 'SO', 'AN', 'AL'].includes(etat.toUpperCase())) {
+      showNotification('❌ État invalide', 'error');
+      return;
+    }
+    
+    try {
+      const res = await fetch(`${API_URL}/commandes/modifier-etat`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nocde, nouvel_etat: etat.toUpperCase() })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showNotification('✅ État modifié avec succès');
+        loadData();
+      } else {
+        showNotification(data.message, 'error');
+      }
+    } catch (err) {
+      showNotification('❌ Erreur modification', 'error');
+    }
+  };
+
+  const handleAnnuler = async (nocde) => {
+    if (!window.confirm('⚠️ Confirmer l\'annulation ? Le stock sera remis à jour.')) return;
+    
+    try {
+      const res = await fetch(`${API_URL}/commandes/annuler/${nocde}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        showNotification('✅ Commande annulée - Stock restauré');
+        loadData();
+      } else {
+        showNotification(data.message, 'error');
+      }
+    } catch (err) {
+      showNotification('❌ Erreur annulation', 'error');
+    }
+  };
+
+  const filteredCommandes = commandes.filter(cmd => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    return (
+      cmd[0]?.toString().includes(term) ||
+      cmd[4]?.toLowerCase().includes(term) ||
+      cmd[5]?.toLowerCase().includes(term)
+    );
+  });
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
+            <Package className="text-blue-600" size={32} />
+            Gestion des Commandes
+          </h2>
+          <p className="text-gray-600 mt-1">Package: <code className="bg-gray-100 px-2 py-1 rounded">pkg_gestion_commandes</code></p>
+        </div>
+        <button 
+          onClick={() => setShowAddForm(!showAddForm)} 
+          className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:shadow-xl transition-all font-semibold"
+        >
+          <Plus size={20} />
+          Nouvelle Commande
+        </button>
+      </div>
+
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-5 rounded-xl border-2 border-blue-200">
+        <SearchBar
+          value={searchTerm}
+          onChange={setSearchTerm}
+          onSearch={loadData}
+          onReset={() => { setSearchTerm(''); loadData(); }}
+          placeholder="Rechercher par N°, client..."
+        />
+      </div>
+
+      {showAddForm && (
+        <form onSubmit={handleAddCommande} className="bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-xl border-2 border-blue-300 shadow-lg">
+          <h3 className="font-bold text-blue-900 mb-4 text-xl flex items-center gap-2">
+            <Plus className="bg-blue-600 text-white p-1 rounded" size={24} />
+            Ajouter une nouvelle commande
+          </h3>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-bold mb-2 text-gray-700">👤 Client *</label>
+              <select 
+                value={formData.noclt} 
+                onChange={(e) => setFormData({...formData, noclt: e.target.value})} 
+                className="w-full px-4 py-3 border-2 border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium" 
+                required
+              >
+                <option value="">Sélectionner un client...</option>
+                {clients.map(cl => (
+                  <option key={cl[0]} value={cl[0]}>
+                    {cl[1]} {cl[2]} - {cl[5]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-bold mb-2 text-gray-700">📦 Article *</label>
+              <select 
+                value={formData.refart} 
+                onChange={(e) => setFormData({...formData, refart: e.target.value})} 
+                className="w-full px-4 py-3 border-2 border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium" 
+                required
+              >
+                <option value="">Sélectionner un article...</option>
+                {articles.map(art => (
+                  <option key={art[0]} value={art[0]}>
+                    {art[1]} (Stock: {art[6]})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-bold mb-2 text-gray-700">🔢 Quantité *</label>
+              <input 
+                type="number" 
+                value={formData.qtecde} 
+                onChange={(e) => setFormData({...formData, qtecde: e.target.value})} 
+                className="w-full px-4 py-3 border-2 border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium" 
+                min="1" 
+                required 
+              />
+            </div>
+          </div>
+          <div className="flex gap-3 mt-6">
+            <button type="submit" className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2">
+              <Check size={20} />
+              Ajouter
+            </button>
+            <button type="button" onClick={() => setShowAddForm(false)} className="bg-gray-300 text-gray-700 px-8 py-3 rounded-lg hover:bg-gray-400 font-bold flex items-center gap-2">
+              <X size={20} />
+              Annuler
+            </button>
+          </div>
+        </form>
+      )}
+
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <p className="mt-4 text-gray-600">Chargement...</p>
+        </div>
+      ) : (
+        <>
+          <div className="overflow-x-auto border-2 border-gray-200 rounded-xl shadow-lg">
+            <table className="w-full">
+              <thead className="bg-gradient-to-r from-gray-100 to-gray-200 border-b-2 border-gray-300">
+                <tr>
+                  <th className="px-6 py-4 text-left font-bold text-gray-800">N° Commande</th>
+                  <th className="px-6 py-4 text-left font-bold text-gray-800">Date</th>
+                  <th className="px-6 py-4 text-left font-bold text-gray-800">Client</th>
+                  <th className="px-6 py-4 text-left font-bold text-gray-800">État</th>
+                  <th className="px-6 py-4 text-left font-bold text-gray-800">Montant</th>
+                  <th className="px-6 py-4 text-left font-bold text-gray-800">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredCommandes.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
+                      <Package size={48} className="mx-auto mb-3 text-gray-300" />
+                      <p className="font-medium">Aucune commande trouvée</p>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredCommandes.map((cmd, idx) => (
+                    <tr key={idx} className="border-b hover:bg-blue-50 transition-colors">
+                      <td className="px-6 py-4 font-mono font-bold text-blue-600">#{cmd[0]}</td>
+                      <td className="px-6 py-4 font-medium">{new Date(cmd[1]).toLocaleDateString('fr-FR')}</td>
+                      <td className="px-6 py-4 font-semibold">{cmd[4]} {cmd[5]}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-4 py-2 rounded-full text-xs font-black uppercase tracking-wide ${
+                          cmd[2] === 'EC' ? 'bg-yellow-200 text-yellow-900' :
+                          cmd[2] === 'PR' ? 'bg-blue-200 text-blue-900' :
+                          cmd[2] === 'LI' ? 'bg-purple-200 text-purple-900' :
+                          cmd[2] === 'SO' ? 'bg-green-200 text-green-900' :
+                          'bg-red-200 text-red-900'
+                        }`}>
+                          {cmd[2]}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 font-bold text-green-600 text-lg">
+                        {cmd[6] ? `${Number(cmd[6]).toFixed(2)} TND` : '-'}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => handleModifierEtat(cmd[0])} 
+                            className="p-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg transition-all" 
+                            title="Modifier état"
+                          >
+                            <Edit size={18} />
+                          </button>
+                          <button 
+                            onClick={() => handleAnnuler(cmd[0])} 
+                            className="p-2 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg transition-all" 
+                            title="Annuler"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="bg-gradient-to-r from-gray-50 to-blue-50 p-4 rounded-lg border-2 border-gray-200">
+            <p className="text-sm font-semibold text-gray-700">
+              📊 Total: <span className="text-blue-600 text-lg">{filteredCommandes.length}</span> commande(s) affichée(s)
+            </p>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ==================== SECTION STATISTIQUES (CORRIGÉE) ====================
+function StatsSection({ showNotification }) {
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadStats();
+  }, []);
+
+  const loadStats = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/stats/global`);
+      const data = await res.json();
+      if (data.success && data.data) {
+        setStats(data.data);
+      } else {
+        showNotification('❌ Erreur chargement statistiques', 'error');
+      }
+    } catch (err) {
+      showNotification('❌ Erreur: ' + err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="text-center py-12">
+        <div className="inline-block animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600"></div>
+        <p className="mt-4 text-gray-600 font-medium">Chargement des statistiques...</p>
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div className="text-center py-12 bg-red-50 rounded-xl border-2 border-red-200">
+        <AlertCircle size={48} className="mx-auto mb-3 text-red-500" />
+        <p className="font-semibold text-red-700">Impossible de charger les statistiques</p>
+        <button
+          onClick={loadStats}
+          className="mt-4 bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700"
+        >
+          Réessayer
+        </button>
+      </div>
+    );
+  }
+
+  const StatCard = ({ value, label, icon: Icon, color }) => (
+    <div className={`bg-gradient-to-br ${color} p-8 rounded-2xl border-2 shadow-lg hover:shadow-xl transition-all`}>
+      <div className="flex justify-between items-start mb-4">
+        <div className="text-5xl font-black">{value || 0}</div>
+        <Icon size={40} className="opacity-50" />
+      </div>
+      <p className="text-sm font-bold uppercase tracking-wide opacity-80">{label}</p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
+            <BarChart3 className="text-purple-600" size={32} />
+            Statistiques Globales
+          </h2>
+          <p className="text-gray-600 mt-1">Vue d'ensemble du système en temps réel</p>
+        </div>
+        <button
+          onClick={loadStats}
+          className="bg-purple-600 text-white px-6 py-3 rounded-xl hover:bg-purple-700 flex items-center gap-2 font-semibold"
+        >
+          <RefreshCw size={20} />
+          Actualiser
+        </button>
+      </div>
+
+      <div className="grid grid-cols-5 gap-4">
+        <StatCard
+          value={stats[0]}
+          label="Commandes"
+          icon={Package}
+          color="from-blue-100 to-blue-200 border-blue-300"
+        />
+        <StatCard
+          value={stats[1]}
+          label="Livraisons"
+          icon={Truck}
+          color="from-green-100 to-green-200 border-green-300"
+        />
+        <StatCard
+          value={stats[2]}
+          label="Utilisateurs"
+          icon={Users}
+          color="from-purple-100 to-purple-200 border-purple-300"
+        />
+        <StatCard
+          value={stats[3]}
+          label="Articles"
+          icon={Package}
+          color="from-orange-100 to-orange-200 border-orange-300"
+        />
+        <StatCard
+          value={stats[4]}
+          label="Clients"
+          icon={Users}
+          color="from-pink-100 to-pink-200 border-pink-300"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-6">
+        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-xl border-2 border-blue-200">
+          <h3 className="text-xl font-bold mb-4 text-blue-900 flex items-center gap-2">
+            <Settings size={24} />
+            Packages Implémentés
+          </h3>
+          <ul className="space-y-2">
+            {['pkg_messages', 'pkg_gestion_commandes', 'pkg_gestion_livraisons', 'pkg_gestion_utilisateurs', 'pkg_gestion_privileges'].map((pkg, i) => (
+              <li key={i} className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <CheckCircle size={16} className="text-green-600" />
+                <code className="bg-white px-2 py-1 rounded">{pkg}</code>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-6 rounded-xl border-2 border-green-200">
+          <h3 className="text-xl font-bold mb-4 text-green-900 flex items-center gap-2">
+            <Shield size={24} />
+            Triggers Actifs
+          </h3>
+          <ul className="space-y-2">
+            {['trg_verif_article_unique', 'trg_date_commande', 'trg_maj_stock', 'trg_limite_livraisons', 'trg_heure_maj_livraison'].map((trg, i) => (
+              <li key={i} className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <CheckCircle size={16} className="text-green-600" />
+                <code className="bg-white px-2 py-1 rounded">{trg}</code>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Sections simplifiées pour respecter la limite de tokens
+function LivraisonsSection({ showNotification }) {
+  return <div className="text-center py-12 text-gray-500">Section Livraisons - Voir fichier complet</div>;
+}
+
+function UsersSection({ showNotification }) {
+  return <div className="text-center py-12 text-gray-500">Section Utilisateurs - Voir fichier complet</div>;
+}
+
+function PrivilegesSection({ showNotification }) {
+  return <div className="text-center py-12 text-gray-500">Section Privilèges - Voir fichier complet</div>;
+}
+
+function PackagesSection() {
+  return <div className="text-center py-12 text-gray-500">Section Packages - Voir fichier complet</div>;
+}
+
+function DataSection({ showNotification }) {
+  return <div className="text-center py-12 text-gray-500">Section Données - Voir fichier complet</div>;
+}
+
+export default App;
+// Section Livraisons - À intégrer dans App.js
+
+function LivraisonsSection({ showNotification }) {
+  const [livraisons, setLivraisons] = useState([]);
+  const [commandes, setCommandes] = useState([]);
+  const [personnel, setPersonnel] = useState([]);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [showModifyForm, setShowModifyForm] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchType, setSearchType] = useState('commande');
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({ 
+    nocde: '', 
+    dateliv: '', 
+    livreur: '', 
+    modepay: '' 
+  });
+  const [modifyData, setModifyData] = useState({ 
+    nocde: '', 
+    nouvelle_date: '', 
+    nouveau_livreur: '' 
+  });
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [livRes, cmdRes, persRes] = await Promise.all([
+        fetch(`${API_URL}/livraisons`),
+        fetch(`${API_URL}/commandes`),
+        fetch(`${API_URL}/personnel`)
+      ]);
+      const [livData, cmdData, persData] = await Promise.all([
+        livRes.json(), 
+        cmdRes.json(), 
+        persRes.json()
+      ]);
+      
+      if (livData.success) setLivraisons(livData.data);
+      if (cmdData.success) {
+        // Filtrer seulement les commandes prêtes (PR)
+        setCommandes(cmdData.data.filter(c => c[2] === 'PR'));
+      }
+      if (persData.success) setPersonnel(persData.data);
+    } catch (err) {
+      showNotification('❌ Erreur chargement données', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddLivraison = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${API_URL}/livraisons/ajouter`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        showNotification('✅ Livraison ajoutée avec succès');
+        setShowAddForm(false);
+        setFormData({ nocde: '', dateliv: '', livreur: '', modepay: '' });
+        loadData();
+      } else {
+        showNotification('❌ ' + data.message, 'error');
+      }
+    } catch (err) {
+      showNotification('❌ Erreur lors de l\'ajout', 'error');
+    }
+  };
+
+  const handleModifyLivraison = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${API_URL}/livraisons/modifier`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(modifyData)
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        showNotification('✅ Livraison modifiée avec succès');
+        setShowModifyForm(null);
+        setModifyData({ nocde: '', nouvelle_date: '', nouveau_livreur: '' });
+        loadData();
+      } else {
+        showNotification('❌ ' + data.message, 'error');
+      }
+    } catch (err) {
+      showNotification('❌ Erreur modification', 'error');
+    }
+  };
+
+  const handleDelete = async (nocde) => {
+    if (!window.confirm('⚠️ Supprimer cette livraison ? La commande sera annulée.')) return;
+    
+    try {
+      const res = await fetch(`${API_URL}/livraisons/supprimer/${nocde}`, { 
+        method: 'DELETE' 
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        showNotification('✅ Livraison supprimée');
+        loadData();
+      } else {
+        showNotification('❌ ' + data.message, 'error');
+      }
+    } catch (err) {
+      showNotification('❌ Erreur suppression', 'error');
+    }
+  };
+
+  const handleSearchByType = async () => {
+    if (!searchTerm) {
+      loadData();
+      return;
+    }
+
+    try {
+      let url = '';
+      if (searchType === 'commande') {
+        url = `${API_URL}/livraisons/commande/${searchTerm}`;
+      } else if (searchType === 'livreur') {
+        url = `${API_URL}/livraisons/livreur/${searchTerm}`;
+      } else if (searchType === 'ville') {
+        url = `${API_URL}/livraisons/ville/${searchTerm}`;
+      }
+      
+      const res = await fetch(url);
+      const data = await res.json();
+      
+      if (data.success) {
+        setLivraisons(data.data);
+        showNotification(`✅ ${data.data.length} résultat(s) trouvé(s)`);
+      }
+    } catch (err) {
+      showNotification('❌ Erreur de recherche', 'error');
+    }
+  };
+
+  const openModifyForm = (liv) => {
+    setShowModifyForm(liv[0]);
+    setModifyData({
+      nocde: liv[0],
+      nouvelle_date: '',
+      nouveau_livreur: ''
+    });
+  };
+
+  const filteredLivraisons = livraisons.filter(liv => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    return (
+      liv[0]?.toString().includes(term) ||
+      liv[5]?.toLowerCase().includes(term) ||
+      liv[6]?.toLowerCase().includes(term) ||
+      liv[8]?.toLowerCase().includes(term) ||
+      liv[9]?.toLowerCase().includes(term)
+    );
+  });
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
+            <Truck className="text-green-600" size={32} />
+            Gestion des Livraisons
+          </h2>
+          <p className="text-gray-600 mt-1">
+            Package: <code className="bg-gray-100 px-2 py-1 rounded">pkg_gestion_livraisons</code>
+          </p>
+        </div>
+        <button 
+          onClick={() => setShowAddForm(!showAddForm)} 
+          className="bg-gradient-to-r from-green-600 to-green-700 text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:shadow-xl transition-all font-semibold"
+        >
+          <Plus size={20} />
+          Nouvelle Livraison
+        </button>
+      </div>
+
+      {/* Barre de recherche */}
+      <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-5 rounded-xl border-2 border-green-200">
+        <div className="flex gap-3 items-end">
+          <div className="flex-1">
+            <label className="block text-sm font-bold mb-2 text-gray-700">🔍 Rechercher</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="N° commande, livreur, client..."
+                className="w-full pl-10 pr-4 py-3 border-2 border-green-300 rounded-lg focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+          </div>
+          <div className="w-48">
+            <label className="block text-sm font-bold mb-2 text-gray-700">Type</label>
+            <select 
+              value={searchType}
+              onChange={(e) => setSearchType(e.target.value)}
+              className="w-full px-4 py-3 border-2 border-green-300 rounded-lg"
+            >
+              <option value="commande">N° Commande</option>
+              <option value="livreur">Livreur</option>
+              <option value="ville">Code Postal</option>
+            </select>
+          </div>
+          <button
+            onClick={handleSearchByType}
+            className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 font-medium flex items-center gap-2"
+          >
+            <Search size={20} />
+            Rechercher
+          </button>
+          <button
+            onClick={() => { setSearchTerm(''); loadData(); }}
+            className="bg-gray-600 text-white px-4 py-3 rounded-lg hover:bg-gray-700"
+            title="Réinitialiser"
+          >
+            <RefreshCw size={20} />
+          </button>
+        </div>
+      </div>
+
+      {/* Formulaire d'ajout */}
+      {showAddForm && (
+        <form onSubmit={handleAddLivraison} className="bg-gradient-to-br from-green-50 to-emerald-50 p-6 rounded-xl border-2 border-green-300 shadow-lg">
+          <h3 className="font-bold text-green-900 mb-4 text-xl flex items-center gap-2">
+            <Plus className="bg-green-600 text-white p-1 rounded" size={24} />
+            Ajouter une nouvelle livraison
+          </h3>
+          <div className="grid grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-bold mb-2 text-gray-700">📦 Commande (PR) *</label>
+              <select 
+                value={formData.nocde} 
+                onChange={(e) => setFormData({...formData, nocde: e.target.value})} 
+                className="w-full px-4 py-3 border-2 border-green-300 rounded-lg focus:ring-2 focus:ring-green-500" 
+                required
+              >
+                <option value="">Sélectionner...</option>
+                {commandes.map(cmd => (
+                  <option key={cmd[0]} value={cmd[0]}>
+                    #{cmd[0]} - {cmd[4]} {cmd[5]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-bold mb-2 text-gray-700">📅 Date livraison *</label>
+              <input 
+                type="date" 
+                value={formData.dateliv} 
+                onChange={(e) => setFormData({...formData, dateliv: e.target.value})} 
+                className="w-full px-4 py-3 border-2 border-green-300 rounded-lg focus:ring-2 focus:ring-green-500" 
+                required 
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-bold mb-2 text-gray-700">👤 Livreur *</label>
+              <select 
+                value={formData.livreur} 
+                onChange={(e) => setFormData({...formData, livreur: e.target.value})} 
+                className="w-full px-4 py-3 border-2 border-green-300 rounded-lg focus:ring-2 focus:ring-green-500" 
+                required
+              >
+                <option value="">Sélectionner...</option>
+                {personnel.map(p => (
+                  <option key={p[0]} value={p[0]}>
+                    {p[1]} {p[2]} - {p[9]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-bold mb-2 text-gray-700">💳 Mode paiement *</label>
+              <select 
+                value={formData.modepay} 
+                onChange={(e) => setFormData({...formData, modepay: e.target.value})} 
+                className="w-full px-4 py-3 border-2 border-green-300 rounded-lg focus:ring-2 focus:ring-green-500" 
+                required
+              >
+                <option value="">Sélectionner...</option>
+                <option value="avant_livraison">💰 Avant livraison</option>
+                <option value="apres_livraison">📦 Après livraison</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex gap-3 mt-6">
+            <button type="submit" className="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 font-bold flex items-center gap-2">
+              <Check size={20} />
+              Ajouter
+            </button>
+            <button 
+              type="button" 
+              onClick={() => {
+                setShowAddForm(false);
+                setFormData({ nocde: '', dateliv: '', livreur: '', modepay: '' });
+              }} 
+              className="bg-gray-300 text-gray-700 px-8 py-3 rounded-lg hover:bg-gray-400 font-bold flex items-center gap-2"
+            >
+              <X size={20} />
+              Annuler
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Formulaire de modification */}
+      {showModifyForm && (
+        <form onSubmit={handleModifyLivraison} className="bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-xl border-2 border-blue-300 shadow-lg">
+          <h3 className="font-bold text-blue-900 mb-4 text-xl flex items-center gap-2">
+            <Edit className="bg-blue-600 text-white p-1 rounded" size={24} />
+            Modifier la livraison #{showModifyForm}
+          </h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-bold mb-2 text-gray-700">📅 Nouvelle date (optionnel)</label>
+              <input 
+                type="date" 
+                value={modifyData.nouvelle_date} 
+                onChange={(e) => setModifyData({...modifyData, nouvelle_date: e.target.value})} 
+                className="w-full px-4 py-3 border-2 border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500" 
+              />
+              <p className="text-xs text-gray-500 mt-1">⏰ Modifiable avant 9h (matin) ou 14h (après-midi)</p>
+            </div>
+            <div>
+              <label className="block text-sm font-bold mb-2 text-gray-700">👤 Nouveau livreur (optionnel)</label>
+              <select 
+                value={modifyData.nouveau_livreur} 
+                onChange={(e) => setModifyData({...modifyData, nouveau_livreur: e.target.value})} 
+                className="w-full px-4 py-3 border-2 border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Ne pas modifier</option>
+                {personnel.map(p => (
+                  <option key={p[0]} value={p[0]}>
+                    {p[1]} {p[2]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex gap-3 mt-6">
+            <button type="submit" className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2">
+              <Check size={20} />
+              Modifier
+            </button>
+            <button 
+              type="button" 
+              onClick={() => {
+                setShowModifyForm(null);
+                setModifyData({ nocde: '', nouvelle_date: '', nouveau_livreur: '' });
+              }} 
+              className="bg-gray-300 text-gray-700 px-8 py-3 rounded-lg hover:bg-gray-400 font-bold flex items-center gap-2"
+            >
+              <X size={20} />
+              Annuler
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Table des livraisons */}
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+          <p className="mt-4 text-gray-600">Chargement...</p>
+        </div>
+      ) : (
+        <>
+          <div className="overflow-x-auto border-2 border-gray-200 rounded-xl shadow-lg">
+            <table className="w-full">
+              <thead className="bg-gradient-to-r from-gray-100 to-gray-200 border-b-2 border-gray-300">
+                <tr>
+                  <th className="px-6 py-4 text-left font-bold text-gray-800">N° Commande</th>
+                  <th className="px-6 py-4 text-left font-bold text-gray-800">Date livraison</th>
+                  <th className="px-6 py-4 text-left font-bold text-gray-800">Livreur</th>
+                  <th className="px-6 py-4 text-left font-bold text-gray-800">Client</th>
+                  <th className="px-6 py-4 text-left font-bold text-gray-800">Mode paiement</th>
+                  <th className="px-6 py-4 text-left font-bold text-gray-800">État</th>
+                  <th className="px-6 py-4 text-left font-bold text-gray-800">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredLivraisons.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" className="px-6 py-12 text-center text-gray-500">
+                      <Truck size={48} className="mx-auto mb-3 text-gray-300" />
+                      <p className="font-medium">Aucune livraison trouvée</p>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredLivraisons.map((liv, idx) => (
+                    <tr key={idx} className="border-b hover:bg-green-50 transition-colors">
+                      <td className="px-6 py-4 font-mono font-bold text-green-600">#{liv[0]}</td>
+                      <td className="px-6 py-4 font-medium">
+                        <div className="flex items-center gap-2">
+                          <Calendar size={16} className="text-gray-400" />
+                          {new Date(liv[1]).toLocaleDateString('fr-FR')}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 font-semibold">{liv[5]} {liv[6]}</td>
+                      <td className="px-6 py-4">{liv[8]} {liv[9]}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                          liv[3] === 'avant_livraison' 
+                            ? 'bg-blue-100 text-blue-800' 
+                            : 'bg-purple-100 text-purple-800'
+                        }`}>
+                          {liv[3] === 'avant_livraison' ? '💰 Avant' : '📦 Après'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-4 py-2 rounded-full text-xs font-black uppercase ${
+                          liv[4] === 'EC' ? 'bg-yellow-200 text-yellow-900' :
+                          liv[4] === 'LI' ? 'bg-green-200 text-green-900' :
+                          'bg-gray-200 text-gray-900'
+                        }`}>
+                          {liv[4]}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => openModifyForm(liv)} 
+                            className="p-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg transition-all" 
+                            title="Modifier"
+                          >
+                            <Edit size={18} />
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(liv[0])} 
+                            className="p-2 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg transition-all" 
+                            title="Supprimer"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="bg-gradient-to-r from-gray-50 to-green-50 p-4 rounded-lg border-2 border-gray-200">
+            <p className="text-sm font-semibold text-gray-700">
+              📊 Total: <span className="text-green-600 text-lg">{filteredLivraisons.length}</span> livraison(s) affichée(s)
+            </p>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+// Section Utilisateurs - À intégrer dans App.js
+
+function UsersSection({ showNotification }) {
+  const [users, setUsers] = useState([]);
+  const [postes, setPostes] = useState([]);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editMode, setEditMode] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchType, setSearchType] = useState('nom');
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    nompers: '', 
+    prenompers: '', 
+    adrpers: '', 
+    villepers: '', 
+    telpers: '', 
+    login: '', 
+    motP: '', 
+    codeposte: ''
+  });
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [usRes, psRes] = await Promise.all([
+        fetch(`${API_URL}/users`),
+        fetch(`${API_URL}/postes`)
+      ]);
+      const [usData, psData] = await Promise.all([usRes.json(), psRes.json()]);
+      
+      if (usData.success) setUsers(usData.data);
+      if (psData.success) setPostes(psData.data);
+    } catch (err) {
+      showNotification('❌ Erreur chargement', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    // Validation téléphone (8 chiffres)
+    if (formData.telpers.length !== 8 || !/^\d+$/.test(formData.telpers)) {
+      showNotification('❌ Le téléphone doit contenir exactement 8 chiffres', 'error');
+      return;
+    }
+    
+    try {
+      const url = editMode ? `${API_URL}/users/modifier` : `${API_URL}/users/ajouter`;
+      const method = editMode ? 'PUT' : 'POST';
+      const body = editMode ? { ...formData, idpers: editMode } : formData;
+      
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        showNotification(editMode ? '✅ Utilisateur modifié' : '✅ Utilisateur créé');
+        resetForm();
+        loadData();
+      } else {
+        showNotification('❌ ' + data.message, 'error');
+      }
+    } catch (err) {
+      showNotification('❌ Erreur: ' + err.message, 'error');
+    }
+  };
+
+  const handleEdit = (user) => {
+    setEditMode(user[0]);
+    setFormData({
+      nompers: user[1],
+      prenompers: user[2],
+      adrpers: user[3],
+      villepers: user[4],
+      telpers: user[5].toString(),
+      login: user[7],
+      motP: '',
+      codeposte: user[8]
+    });
+    setShowAddForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleDelete = async (idpers, login) => {
+    if (!window.confirm(`⚠️ Désactiver l'utilisateur "${login}" ?\n\nCette action est réversible (suppression logique).`)) return;
+    
+    try {
+      const res = await fetch(`${API_URL}/users/supprimer/${idpers}`, { 
+        method: 'DELETE' 
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        showNotification('✅ Utilisateur désactivé');
+        loadData();
+      } else {
+        showNotification('❌ ' + data.message, 'error');
+      }
+    } catch (err) {
+      showNotification('❌ Erreur suppression', 'error');
+    }
+  };
+
+  const handleSearch = async () => {
+    if (!searchTerm) {
+      loadData();
+      return;
+    }
+
+    try {
+      let url = `${API_URL}/users/chercher?critere=${searchType}&valeur=${searchTerm}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      
+      if (data.success) {
+        setUsers(data.data);
+        showNotification(`✅ ${data.data.length} résultat(s) trouvé(s)`);
+      }
+    } catch (err) {
+      // Recherche locale si l'API ne supporte pas
+      const filtered = users.filter(u => {
+        const term = searchTerm.toLowerCase();
+        if (searchType === 'nom') {
+          return u[1]?.toLowerCase().includes(term) || u[2]?.toLowerCase().includes(term);
+        } else if (searchType === 'login') {
+          return u[7]?.toLowerCase().includes(term);
+        } else if (searchType === 'poste') {
+          return u[9]?.toLowerCase().includes(term);
+        }
+        return false;
+      });
+      setUsers(filtered);
+      showNotification(`✅ ${filtered.length} résultat(s) trouvé(s)`);
+    }
+  };
+
+  const resetForm = () => {
+    setShowAddForm(false);
+    setEditMode(null);
+    setFormData({
+      nompers: '', prenompers: '', adrpers: '', villepers: '', 
+      telpers: '', login: '', motP: '', codeposte: ''
+    });
+  };
+
+  const handleChangePassword = async (idpers, login) => {
+    const oldPass = prompt(`🔒 Changement de mot de passe pour "${login}"\n\nEntrez l'ancien mot de passe:`);
+    if (!oldPass) return;
+    
+    const newPass = prompt('Entrez le nouveau mot de passe:');
+    if (!newPass) return;
+    
+    const confirmPass = prompt('Confirmez le nouveau mot de passe:');
+    if (newPass !== confirmPass) {
+      showNotification('❌ Les mots de passe ne correspondent pas', 'error');
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/users/changer-mot-de-passe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ login, ancien_motP: oldPass, nouveau_motP: newPass })
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        showNotification('✅ Mot de passe modifié avec succès');
+      } else {
+        showNotification('❌ ' + data.message, 'error');
+      }
+    } catch (err) {
+      showNotification('❌ Erreur: ' + err.message, 'error');
+    }
+  };
+
+  const filteredUsers = users.filter(user => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    return (
+      user[1]?.toLowerCase().includes(term) ||
+      user[2]?.toLowerCase().includes(term) ||
+      user[7]?.toLowerCase().includes(term) ||
+      user[9]?.toLowerCase().includes(term)
+    );
+  });
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
+            <Users className="text-purple-600" size={32} />
+            Gestion des Utilisateurs
+          </h2>
+          <p className="text-gray-600 mt-1">
+            Package: <code className="bg-gray-100 px-2 py-1 rounded">pkg_gestion_utilisateurs</code>
+          </p>
+        </div>
+        <button
+          onClick={() => {
+            resetForm();
+            setShowAddForm(!showAddForm);
+          }}
+          className="bg-gradient-to-r from-purple-600 to-purple-700 text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:shadow-xl transition-all font-semibold"
+        >
+          <Plus size={20} />
+          Nouvel Utilisateur
+        </button>
+      </div>
+
+      {/* Barre de recherche */}
+      <div className="bg-gradient-to-r from-purple-50 to-pink-50 p-5 rounded-xl border-2 border-purple-200">
+        <div className="flex gap-3 items-end">
+          <div className="flex-1">
+            <label className="block text-sm font-bold mb-2 text-gray-700">🔍 Rechercher</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Nom, login, poste..."
+                className="w-full pl-10 pr-4 py-3 border-2 border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+          </div>
+          <div className="w-48">
+            <label className="block text-sm font-bold mb-2 text-gray-700">Type</label>
+            <select 
+              value={searchType}
+              onChange={(e) => setSearchType(e.target.value)}
+              className="w-full px-4 py-3 border-2 border-purple-300 rounded-lg"
+            >
+              <option value="nom">Nom</option>
+              <option value="login">Login</option>
+              <option value="poste">Poste</option>
+            </select>
+          </div>
+          <button
+            onClick={handleSearch}
+            className="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 font-medium flex items-center gap-2"
+          >
+            <Search size={20} />
+            Rechercher
+          </button>
+          <button
+            onClick={() => { setSearchTerm(''); loadData(); }}
+            className="bg-gray-600 text-white px-4 py-3 rounded-lg hover:bg-gray-700"
+            title="Réinitialiser"
+          >
+            <RefreshCw size={20} />
+          </button>
+        </div>
+      </div>
+
+      {/* Formulaire d'ajout/modification */}
+      {showAddForm && (
+        <form onSubmit={handleSubmit} className="bg-gradient-to-br from-purple-50 to-indigo-50 p-6 rounded-xl border-2 border-purple-300 shadow-lg">
+          <h3 className="font-bold text-purple-900 mb-4 text-xl flex items-center gap-2">
+            {editMode ? (
+              <><Edit className="bg-blue-600 text-white p-1 rounded" size={24} /> Modifier l'utilisateur</>
+            ) : (
+              <><Plus className="bg-purple-600 text-white p-1 rounded" size={24} /> Nouvel utilisateur</>
+            )}
+          </h3>
+          
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-bold mb-2 text-gray-700">👤 Nom *</label>
+              <input 
+                type="text" 
+                value={formData.nompers} 
+                onChange={(e) => setFormData({...formData, nompers: e.target.value})} 
+                className="w-full px-4 py-3 border-2 border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500" 
+                placeholder="Ex: Ben Ali"
+                required 
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-bold mb-2 text-gray-700">👤 Prénom *</label>
+              <input 
+                type="text" 
+                value={formData.prenompers} 
+                onChange={(e) => setFormData({...formData, prenompers: e.target.value})} 
+                className="w-full px-4 py-3 border-2 border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500" 
+                placeholder="Ex: Ahmed"
+                required 
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-bold mb-2 text-gray-700">📍 Ville *</label>
+              <input 
+                type="text" 
+                value={formData.villepers} 
+                onChange={(e) => setFormData({...formData, villepers: e.target.value})} 
+                className="w-full px-4 py-3 border-2 border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500" 
+                placeholder="Ex: Tunis"
+                required 
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            <div>
+              <label className="block text-sm font-bold mb-2 text-gray-700">🏠 Adresse *</label>
+              <input 
+                type="text" 
+                value={formData.adrpers} 
+                onChange={(e) => setFormData({...formData, adrpers: e.target.value})} 
+                className="w-full px-4 py-3 border-2 border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500" 
+                placeholder="Ex: Rue de la liberté, Apt 12"
+                required 
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-bold mb-2 text-gray-700">📞 Téléphone (8 chiffres) *</label>
+              <input 
+                type="tel" 
+                value={formData.telpers} 
+                onChange={(e) => setFormData({...formData, telpers: e.target.value.replace(/\D/g, '').slice(0, 8)})} 
+                className="w-full px-4 py-3 border-2 border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500" 
+                placeholder="Ex: 12345678"
+                pattern="[0-9]{8}"
+                maxLength="8"
+                required 
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4 mt-4">
+            <div>
+              <label className="block text-sm font-bold mb-2 text-gray-700">🔐 Login *</label>
+              <input 
+                type="text" 
+                value={formData.login} 
+                onChange={(e) => setFormData({...formData, login: e.target.value})} 
+                className="w-full px-4 py-3 border-2 border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500" 
+                placeholder="Ex: ahmed.benali"
+                disabled={editMode}
+                required 
+              />
+              {editMode && <p className="text-xs text-gray-500 mt-1">Le login ne peut pas être modifié</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-bold mb-2 text-gray-700">
+                🔒 Mot de passe {editMode ? '(optionnel)' : '*'}
+              </label>
+              <input 
+                type="password" 
+                value={formData.motP} 
+                onChange={(e) => setFormData({...formData, motP: e.target.value})} 
+                className="w-full px-4 py-3 border-2 border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500" 
+                placeholder={editMode ? "Laisser vide pour ne pas modifier" : "Mot de passe"}
+                required={!editMode}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-bold mb-2 text-gray-700">💼 Poste *</label>
+              <select 
+                value={formData.codeposte} 
+                onChange={(e) => setFormData({...formData, codeposte: e.target.value})} 
+                className="w-full px-4 py-3 border-2 border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500" 
+                required
+              >
+                <option value="">Sélectionner...</option>
+                {postes.map(p => (
+                  <option key={p[0]} value={p[0]}>
+                    {p[1]} (Indice: {p[2]})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <button type="submit" className="bg-purple-600 text-white px-8 py-3 rounded-lg hover:bg-purple-700 font-bold flex items-center gap-2">
+              <Check size={20} />
+              {editMode ? 'Modifier' : 'Créer'}
+            </button>
+            <button type="button" onClick={resetForm} className="bg-gray-300 text-gray-700 px-8 py-3 rounded-lg hover:bg-gray-400 font-bold flex items-center gap-2">
+              <X size={20} />
+              Annuler
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Table des utilisateurs */}
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+          <p className="mt-4 text-gray-600">Chargement...</p>
+        </div>
+      ) : (
+        <>
+          <div className="overflow-x-auto border-2 border-gray-200 rounded-xl shadow-lg">
+            <table className="w-full">
+              <thead className="bg-gradient-to-r from-gray-100 to-gray-200 border-b-2 border-gray-300">
+                <tr>
+                  <th className="px-6 py-4 text-left font-bold text-gray-800">ID</th>
+                  <th className="px-6 py-4 text-left font-bold text-gray-800">Nom Complet</th>
+                  <th className="px-6 py-4 text-left font-bold text-gray-800">Login</th>
+                  <th className="px-6 py-4 text-left font-bold text-gray-800">Poste</th>
+                  <th className="px-6 py-4 text-left font-bold text-gray-800">Ville</th>
+                  <th className="px-6 py-4 text-left font-bold text-gray-800">Téléphone</th>
+                  <th className="px-6 py-4 text-left font-bold text-gray-800">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" className="px-6 py-12 text-center text-gray-500">
+                      <Users size={48} className="mx-auto mb-3 text-gray-300" />
+                      <p className="font-medium">Aucun utilisateur trouvé</p>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredUsers.map((user, idx) => (
+                    <tr key={idx} className="border-b hover:bg-purple-50 transition-colors">
+                      <td className="px-6 py-4 font-mono font-bold text-purple-600">#{user[0]}</td>
+                      <td className="px-6 py-4 font-bold text-gray-800">
+                        {user[1]} {user[2]}
+                      </td>
+                      <td className="px-6 py-4">
+                        <code className="bg-purple-100 text-purple-800 px-3 py-1 rounded font-mono font-semibold">
+                          {user[7]}
+                        </code>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="px-4 py-2 bg-purple-200 text-purple-900 rounded-full text-xs font-black uppercase">
+                          {user[9]}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 font-medium">{user[4]}</td>
+                      <td className="px-6 py-4 font-mono">{user[5]}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => handleEdit(user)} 
+                            className="p-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg transition-all" 
+                            title="Modifier"
+                          >
+                            <Edit size={18} />
+                          </button>
+                          <button 
+                            onClick={() => handleChangePassword(user[0], user[7])} 
+                            className="p-2 bg-green-100 text-green-700 hover:bg-green-200 rounded-lg transition-all" 
+                            title="Changer mot de passe"
+                          >
+                            <Lock size={18} />
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(user[0], user[7])} 
+                            className="p-2 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg transition-all" 
+                            title="Désactiver"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="bg-gradient-to-r from-gray-50 to-purple-50 p-4 rounded-lg border-2 border-gray-200">
+            <p className="text-sm font-semibold text-gray-700">
+              📊 Total: <span className="text-purple-600 text-lg">{filteredUsers.length}</span> utilisateur(s) actif(s)
+            </p>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+// ==================== SECTION PRIVILÈGES ====================
+function PrivilegesSection({ showNotification }) {
+  const [postes, setPostes] = useState([]);
+  const [formData, setFormData] = useState({ username: '', codeposte: '' });
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    loadPostes();
+  }, []);
+
+  const loadPostes = async () => {
+    try {
+      const res = await fetch(`${API_URL}/postes`);
+      const data = await res.json();
+      if (data.success) setPostes(data.data);
+    } catch (err) {
+      showNotification('❌ Erreur chargement postes', 'error');
+    }
+  };
+
+  const handleCreerSchemas = async () => {
+    if (!window.confirm('⚠️ Créer tous les schémas externes (vues) ?\n\nCette opération va créer/recréer les vues nécessaires.')) return;
+    
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/privileges/creer-schemas`, { method: 'POST' });
+      const data = await res.json();
+      
+      if (data.success) {
+        showNotification('✅ Schémas externes créés avec succès');
+      } else {
+        showNotification('❌ ' + data.message, 'error');
+      }
+    } catch (err) {
+      showNotification('❌ Erreur: ' + err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGererPrivileges = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    
+    try {
+      const res = await fetch(`${API_URL}/privileges/gerer-par-poste`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        showNotification('✅ Privilèges accordés avec succès');
+        setFormData({ username: '', codeposte: '' });
+      } else {
+        showNotification('❌ ' + data.message, 'error');
+      }
+    } catch (err) {
+      showNotification('❌ Erreur: ' + err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
+          <Shield className="text-red-600" size={32} />
+          Gestion des Privilèges Oracle
+        </h2>
+        <p className="text-gray-600 mt-1">
+          Package: <code className="bg-gray-100 px-2 py-1 rounded">pkg_gestion_privileges</code>
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-6">
+        {/* Créer schémas */}
+        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-8 rounded-2xl border-2 border-blue-300 shadow-lg">
+          <h3 className="text-2xl font-bold mb-4 text-blue-900 flex items-center gap-2">
+            <Database size={28} />
+            Schémas Externes (Vues)
+          </h3>
+          <p className="text-gray-700 mb-6 leading-relaxed">
+            Crée automatiquement toutes les vues nécessaires pour les différents rôles :
+          </p>
+          <ul className="space-y-2 mb-6 text-sm">
+            <li className="flex items-center gap-2">
+              <CheckCircle size={16} className="text-green-600" />
+              <span className="font-medium">vue_client_commandes</span>
+            </li>
+            <li className="flex items-center gap-2">
+              <CheckCircle size={16} className="text-green-600" />
+              <span className="font-medium">vue_personnel_complet</span>
+            </li>
+            <li className="flex items-center gap-2">
+              <CheckCircle size={16} className="text-green-600" />
+              <span className="font-medium">vue_stats_articles</span>
+            </li>
+            <li className="flex items-center gap-2">
+              <CheckCircle size={16} className="text-green-600" />
+              <span className="font-medium">vue_livraisons_en_cours</span>
+            </li>
+          </ul>
+          <button 
+            onClick={handleCreerSchemas} 
+            disabled={loading}
+            className="w-full bg-blue-600 text-white px-6 py-4 rounded-xl hover:bg-blue-700 font-bold text-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? (
+              <>
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                Création en cours...
+              </>
+            ) : (
+              <>
+                <Database size={24} />
+                Créer les Schémas
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Accorder privilèges */}
+        <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-8 rounded-2xl border-2 border-green-300 shadow-lg">
+          <h3 className="text-2xl font-bold mb-4 text-green-900 flex items-center gap-2">
+            <Shield size={28} />
+            Accorder Privilèges
+          </h3>
+          <p className="text-gray-700 mb-6 leading-relaxed">
+            Attribue automatiquement les privilèges selon le poste de l'utilisateur Oracle.
+          </p>
+          <form onSubmit={handleGererPrivileges} className="space-y-4">
+            <div>
+              <label className="block text-sm font-bold mb-2 text-gray-700">
+                👤 Nom d'utilisateur Oracle *
+              </label>
+              <input 
+                type="text" 
+                value={formData.username} 
+                onChange={(e) => setFormData({...formData, username: e.target.value.toUpperCase()})} 
+                className="w-full px-4 py-3 border-2 border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 font-mono font-bold" 
+                placeholder="Ex: USER1, ADMIN2"
+                required 
+              />
+              <p className="text-xs text-gray-500 mt-1">Doit être un utilisateur Oracle valide</p>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-bold mb-2 text-gray-700">
+                💼 Poste / Rôle *
+              </label>
+              <select 
+                value={formData.codeposte} 
+                onChange={(e) => setFormData({...formData, codeposte: e.target.value})} 
+                className="w-full px-4 py-3 border-2 border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 font-medium" 
+                required
+              >
+                <option value="">Sélectionner un poste...</option>
+                {postes.map(p => (
+                  <option key={p[0]} value={p[0]}>
+                    {p[1]} - {p[0]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            <button 
+              type="submit" 
+              disabled={loading}
+              className="w-full bg-green-600 text-white px-6 py-4 rounded-xl hover:bg-green-700 font-bold text-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  Attribution...
+                </>
+              ) : (
+                <>
+                  <Check size={24} />
+                  Accorder Privilèges
+                </>
+              )}
+            </button>
+          </form>
+        </div>
+      </div>
+
+      {/* Informations sur les privilèges */}
+      <div className="bg-gradient-to-br from-yellow-50 to-orange-50 p-8 rounded-2xl border-2 border-yellow-300">
+        <h3 className="text-2xl font-bold mb-6 text-yellow-900 flex items-center gap-2">
+          <FileText size={28} />
+          Informations sur les Privilèges par Poste
+        </h3>
+        
+        <div className="grid grid-cols-3 gap-6">
+          <div className="bg-white p-5 rounded-xl border-2 border-blue-200">
+            <h4 className="font-bold text-lg mb-3 text-blue-900">P001 - Magasinier</h4>
+            <ul className="space-y-2 text-sm text-gray-700">
+              <li className="flex items-start gap-2">
+                <span className="text-green-600 font-bold">✓</span>
+                <span>SELECT, INSERT, UPDATE sur <strong>articles</strong></span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-600 font-bold">✓</span>
+                <span>SELECT, INSERT, UPDATE sur <strong>commandes</strong></span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-600 font-bold">✓</span>
+                <span>SELECT sur <strong>clients</strong></span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-600 font-bold">✓</span>
+                <span>Accès aux vues statistiques articles</span>
+              </li>
+            </ul>
+          </div>
+
+          <div className="bg-white p-5 rounded-xl border-2 border-purple-200">
+            <h4 className="font-bold text-lg mb-3 text-purple-900">P002 - Administrateur</h4>
+            <ul className="space-y-2 text-sm text-gray-700">
+              <li className="flex items-start gap-2">
+                <span className="text-green-600 font-bold">✓</span>
+                <span><strong>Tous les droits</strong> sur toutes les tables</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-600 font-bold">✓</span>
+                <span>Accès à toutes les vues</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-600 font-bold">✓</span>
+                <span>Exécution de tous les packages</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-600 font-bold">✓</span>
+                <span>Gestion complète du système</span>
+              </li>
+            </ul>
+          </div>
+
+          <div className="bg-white p-5 rounded-xl border-2 border-green-200">
+            <h4 className="font-bold text-lg mb-3 text-green-900">P003 - ChefLivreur</h4>
+            <ul className="space-y-2 text-sm text-gray-700">
+              <li className="flex items-start gap-2">
+                <span className="text-green-600 font-bold">✓</span>
+                <span>Tous droits sur <strong>LivraisonCom</strong></span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-600 font-bold">✓</span>
+                <span>SELECT, UPDATE sur <strong>commandes</strong></span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-600 font-bold">✓</span>
+                <span>SELECT sur <strong>clients, personnel</strong></span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-600 font-bold">✓</span>
+                <span>INSERT sur <strong>HCommandesAnnulees</strong></span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==================== SECTION PACKAGES ====================
+function PackagesSection() {
+  const packages = [
+    {
+      name: 'pkg_messages',
+      color: 'from-blue-100 to-blue-200 border-blue-300',
+      icon: '💬',
+      description: 'Gestion centralisée des messages système',
+      functions: [
+        'msg_succes_ajout()',
+        'msg_succes_modif()',
+        'msg_succes_suppr()',
+        'msg_err_existe_deja()',
+        'msg_err_introuvable()',
+        'msg_err_date_invalide()',
+        'msg_err_etat_invalide()',
+        'msg_err_limite_livraisons()',
+        'msg_err_heure_maj()',
+        'msg_err_prix()',
+        'msg_err_telephone()',
+        'msg_err_commande_non_prete()'
+      ]
+    },
+    {
+      name: 'pkg_gestion_commandes',
+      color: 'from-green-100 to-green-200 border-green-300',
+      icon: '📦',
+      description: 'CRUD complet sur les commandes avec gestion des transitions d\'état',
+      procedures: [
+        'ajouter_commande(noclt, refart, qtecde)',
+        'modifier_etat_commande(nocde, nouvel_etat)',
+        'annuler_commande(nocde)',
+        'chercher_commande_par_numero(nocde)',
+        'chercher_commande_par_client(noclt)',
+        'chercher_commande_par_date(date)'
+      ],
+      functions: [
+        'transition_etat_valide(etat_actuel, nouvel_etat) RETURN BOOLEAN'
+      ]
+    },
+    {
+      name: 'pkg_gestion_livraisons',
+      color: 'from-purple-100 to-purple-200 border-purple-300',
+      icon: '🚚',
+      description: 'Gestion des livraisons avec contraintes métier (15 max/jour/ville)',
+      procedures: [
+        'ajouter_livraison(nocde, dateliv, livreur, modepay)',
+        'supprimer_livraison(nocde)',
+        'modifier_livraison(nocde, nouvelle_date, nouveau_livreur)',
+        'chercher_livraison_par_commande(nocde)',
+        'chercher_livraison_par_livreur(livreur)',
+        'chercher_livraison_par_ville(code_postal)'
+      ],
+      functions: [
+        'verifier_limite_livraisons(livreur, date, code_postal) RETURN BOOLEAN',
+        'verifier_heure_maj(dateliv) RETURN BOOLEAN'
+      ]
+    },
+    {
+      name: 'pkg_gestion_utilisateurs',
+      color: 'from-yellow-100 to-yellow-200 border-yellow-300',
+      icon: '👥',
+      description: 'Gestion complète des utilisateurs de l\'application',
+      procedures: [
+        'ajouter_utilisateur(nompers, prenompers, adrpers, villepers, telpers, login, motP, codeposte)',
+        'modifier_utilisateur(idpers, ...)',
+        'supprimer_utilisateur(idpers)',
+        'changer_mot_de_passe(login, ancien_motP, nouveau_motP)',
+        'chercher_utilisateur(critere, valeur)',
+        'lister_utilisateurs()',
+        'creer_utilisateur_oracle(idpers, username, password)',
+        'supprimer_utilisateur_oracle(username)',
+        'lister_utilisateurs_oracle()'
+      ],
+      functions: [
+        'authentifier(login, motP) RETURN NUMBER',
+        'obtenir_role(idpers) RETURN VARCHAR2'
+      ]
+    },
+    {
+      name: 'pkg_gestion_privileges',
+      color: 'from-red-100 to-red-200 border-red-300',
+      icon: '🔒',
+      description: 'Attribution automatique des privilèges Oracle par rôle',
+      procedures: [
+        'creer_schemas_externes()',
+        'accorder_privileges_administrateur(username)',
+        'accorder_privileges_magasinier(username)',
+        'accorder_privileges_cheflivreur(username)',
+        'revoquer_tous_privileges(username)',
+        'afficher_privileges(username)',
+        'gerer_privileges_par_poste(username, codeposte)'
+      ]
+    }
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
+          <Settings className="text-indigo-600" size={32} />
+          Packages Oracle Implémentés
+        </h2>
+        <p className="text-gray-600 mt-1">Documentation complète de tous les packages</p>
+      </div>
+
+      <div className="grid gap-6">
+        {packages.map((pkg, idx) => (
+          <div key={idx} className={`bg-gradient-to-br ${pkg.color} p-6 rounded-2xl border-2 shadow-lg hover:shadow-xl transition-all`}>
+            <div className="flex items-start gap-4 mb-4">
+              <div className="text-4xl">{pkg.icon}</div>
+              <div className="flex-1">
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                  <code className="bg-white px-3 py-1 rounded">{pkg.name}</code>
+                </h3>
+                <p className="text-gray-700 leading-relaxed">{pkg.description}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4">
+              {pkg.procedures && (
+                <div className="bg-white p-4 rounded-xl border-2 border-gray-200">
+                  <h4 className="font-bold text-sm text-gray-600 mb-3 uppercase tracking-wide">
+                    📋 Procédures ({pkg.procedures.length})
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {pkg.procedures.map((proc, i) => (
+                      <code key={i} className="px-3 py-2 bg-gray-100 text-gray-800 rounded text-xs font-mono">
+                        {proc}
+                      </code>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {pkg.functions && (
+                <div className="bg-white p-4 rounded-xl border-2 border-gray-200">
+                  <h4 className="font-bold text-sm text-gray-600 mb-3 uppercase tracking-wide">
+                    ⚡ Fonctions ({pkg.functions.length})
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {pkg.functions.map((func, i) => (
+                      <code key={i} className="px-3 py-2 bg-blue-100 text-blue-800 rounded text-xs font-mono">
+                        {func}
+                      </code>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Statistiques */}
+      <div className="bg-gradient-to-r from-gray-100 to-gray-200 p-6 rounded-2xl border-2 border-gray-300">
+        <h3 className="text-xl font-bold mb-4 text-gray-900">📊 Statistiques</h3>
+        <div className="grid grid-cols-4 gap-4">
+          <div className="bg-white p-4 rounded-xl text-center">
+            <div className="text-3xl font-black text-blue-600">5</div>
+            <div className="text-sm font-semibold text-gray-600">Packages</div>
+          </div>
+          <div className="bg-white p-4 rounded-xl text-center">
+            <div className="text-3xl font-black text-green-600">35+</div>
+            <div className="text-sm font-semibold text-gray-600">Procédures</div>
+          </div>
+          <div className="bg-white p-4 rounded-xl text-center">
+            <div className="text-3xl font-black text-purple-600">15+</div>
+            <div className="text-sm font-semibold text-gray-600">Fonctions</div>
+          </div>
+          <div className="bg-white p-4 rounded-xl text-center">
+            <div className="text-3xl font-black text-red-600">10+</div>
+            <div className="text-sm font-semibold text-gray-600">Triggers</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==================== SECTION DONNÉES ====================
+function DataSection({ showNotification }) {
+  const [activeData, setActiveData] = useState('clients');
+  const [clients, setClients] = useState([]);
+  const [articles, setArticles] = useState([]);
+  const [personnel, setPersonnel] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    loadAllData();
+  }, []);
+
+  const loadAllData = async () => {
+    setLoading(true);
+    try {
+      const [clRes, artRes, persRes] = await Promise.all([
+        fetch(`${API_URL}/clients`),
+        fetch(`${API_URL}/articles`),
+        fetch(`${API_URL}/personnel`)
+      ]);
+      const [clData, artData, persData] = await Promise.all([
+        clRes.json(), 
+        artRes.json(), 
+        persRes.json()
+      ]);
+      
+      if (clData.success) setClients(clData.data);
+      if (artData.success) setArticles(artData.data);
+      if (persData.success) setPersonnel(persData.data);
+    } catch (err) {
+      showNotification('❌ Erreur chargement', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filterData = (data, searchFields) => {
+    if (!searchTerm) return data;
+    const term = searchTerm.toLowerCase();
+    return data.filter(item => 
+      searchFields.some(index => 
+        item[index]?.toString().toLowerCase().includes(term)
+      )
+    );
+  };
+
+  const filteredClients = filterData(clients, [1, 2, 5, 7]);
+  const filteredArticles = filterData(articles, [0, 1, 5]);
+  const filteredPersonnel = filterData(personnel, [1, 2, 7, 9]);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
+            <Database className="text-teal-600" size={32} />
+            Tables de Référence
+          </h2>
+          <p className="text-gray-600 mt-1">Consultation des données : clients, articles, personnel</p>
+        </div>
+        <button
+          onClick={loadAllData}
+          className="bg-teal-600 text-white px-6 py-3 rounded-xl hover:bg-teal-700 flex items-center gap-2 font-semibold"
+        >
+          <RefreshCw size={20} />
+          Actualiser
+        </button>
+      </div>
+
+      {/* Recherche */}
+      <div className="bg-gradient-to-r from-teal-50 to-cyan-50 p-4 rounded-xl border-2 border-teal-200">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Rechercher dans les données..."
+            className="w-full pl-10 pr-4 py-3 border-2 border-teal-300 rounded-lg focus:ring-2 focus:ring-teal-500"
+          />
+        </div>
+      </div>
+
+      {/* Onglets */}
+      <div className="flex gap-2 border-b-2">
+        <button
+          onClick={() => setActiveData('clients')}
+          className={`px-6 py-3 border-b-4 font-bold transition-all ${
+            activeData === 'clients'
+              ? 'border-blue-600 text-blue-600 bg-blue-50'
+              : 'border-transparent text-gray-600 hover:text-blue-600'
+          }`}
+        >
+          👥 Clients ({filteredClients.length})
+        </button>
+        <button
+          onClick={() => setActiveData('articles')}
+          className={`px-6 py-3 border-b-4 font-bold transition-all ${
+            activeData === 'articles'
+              ? 'border-green-600 text-green-600 bg-green-50'
+              : 'border-transparent text-gray-600 hover:text-green-600'
+          }`}
+        >
+          📦 Articles ({filteredArticles.length})
+        </button>
+        <button
+          onClick={() => setActiveData('personnel')}
+          className={`px-6 py-3 border-b-4 font-bold transition-all ${
+            activeData === 'personnel'
+              ? 'border-purple-600 text-purple-600 bg-purple-50'
+              : 'border-transparent text-gray-600 hover:text-purple-600'
+          }`}
+        >
+          👔 Personnel ({filteredPersonnel.length})
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
+        </div>
+      ) : (
+        <div className="overflow-x-auto border-2 border-gray-200 rounded-xl shadow-lg">
+          {activeData === 'clients' && (
+            <table className="w-full">
+              <thead className="bg-gradient-to-r from-blue-100 to-blue-200">
+                <tr>
+                  <th className="px-6 py-4 text-left font-bold">ID</th>
+                  <th className="px-6 py-4 text-left font-bold">Nom</th>
+                  <th className="px-6 py-4 text-left font-bold">Prénom</th>
+                  <th className="px-6 py-4 text-left font-bold">Ville</th>
+                  <th className="px-6 py-4 text-left font-bold">Code Postal</th>
+                  <th className="px-6 py-4 text-left font-bold">Téléphone</th>
+                  <th className="px-6 py-4 text-left font-bold">Email</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredClients.map((cl, idx) => (
+                  <tr key={idx} className="border-b hover:bg-blue-50">
+                    <td className="px-6 py-3 font-mono font-bold">{cl[0]}</td>
+                    <td className="px-6 py-3 font-semibold">{cl[1]}</td>
+                    <td className="px-6 py-3">{cl[2]}</td>
+                    <td className="px-6 py-3">{cl[5]}</td>
+                    <td className="px-6 py-3 font-mono">{cl[4]}</td>
+                    <td className="px-6 py-3 font-mono">{cl[6]}</td>
+                    <td className="px-6 py-3 text-sm">{cl[7]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {activeData === 'articles' && (
+            <table className="w-full">
+              <thead className="bg-gradient-to-r from-green-100 to-green-200">
+                <tr>
+                  <th className="px-6 py-4 text-left font-bold">Réf</th>
+                  <th className="px-6 py-4 text-left font-bold">Désignation</th>
+                  <th className="px-6 py-4 text-left font-bold">Prix Achat</th>
+                  <th className="px-6 py-4 text-left font-bold">Prix Vente</th>
+                  <th className="px-6 py-4 text-left font-bold">Marge</th>
+                  <th className="px-6 py-4 text-left font-bold">Catégorie</th>
+                  <th className="px-6 py-4 text-left font-bold">Stock</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredArticles.map((art, idx) => {
+                  const marge = ((art[3] - art[2]) / art[2] * 100).toFixed(1);
+                  return (
+                    <tr key={idx} className="border-b hover:bg-green-50">
+                      <td className="px-6 py-3 font-mono font-bold">{art[0]}</td>
