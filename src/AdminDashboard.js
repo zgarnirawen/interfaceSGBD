@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Package, ShoppingCart, Truck, UserCheck, Briefcase, Building2, LogOut, Plus, Edit2, Trash2, X, Search } from 'lucide-react';
+import { Users, Package, ShoppingCart, Truck, UserCheck, Briefcase, Building2, LogOut, Plus, Edit2, Trash2, X, Search, Shield, Settings, Database } from 'lucide-react';
 import './AdminDashboard.css';
 
 const API_URL = 'http://localhost:3001/api';
@@ -7,8 +7,10 @@ const API_URL = 'http://localhost:3001/api';
 function AdminDashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [notification, setNotification] = useState(null);
 
-  // States for each section
+  // États
   const [users, setUsers] = useState([]);
   const [articles, setArticles] = useState([]);
   const [commandes, setCommandes] = useState([]);
@@ -18,12 +20,16 @@ function AdminDashboard({ user, onLogout }) {
   const [personnel, setPersonnel] = useState([]);
   const [stats, setStats] = useState({});
 
-  const [loading, setLoading] = useState(false);
+  // États formulaires
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [formData, setFormData] = useState({});
 
-  // Fetch all data on component mount
+  const showNotification = (message, type = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 4000);
+  };
+
   useEffect(() => {
     fetchAllData();
   }, []);
@@ -45,44 +51,21 @@ function AdminDashboard({ user, onLogout }) {
           fetch(`${API_URL}/stats/global`, { headers: { 'Authorization': `Bearer ${token}` } })
         ]);
 
-      if (usersRes.ok) {
-        const usersData = await usersRes.json();
-        setUsers(usersData.data || usersData || []);
-      }
-      if (articlesRes.ok) {
-        const articlesData = await articlesRes.json();
-        setArticles(articlesData.data || articlesData || []);
-      }
-      if (commandesRes.ok) {
-        const commandesData = await commandesRes.json();
-        setCommandes(commandesData.data || commandesData || []);
-      }
-      if (livraisonsRes.ok) {
-        const livraisonsData = await livraisonsRes.json();
-        setLivraisons(livraisonsData.data || livraisonsData || []);
-      }
-      if (clientsRes.ok) {
-        const clientsData = await clientsRes.json();
-        setClients(clientsData.data || clientsData || []);
-      }
-      if (postesRes.ok) {
-        const postesData = await postesRes.json();
-        setPostes(postesData.data || postesData || []);
-      }
-      if (personnelRes.ok) {
-        const personnelData = await personnelRes.json();
-        setPersonnel(personnelData.data || personnelData || []);
-      }
-      if (statsRes.ok) {
-        const statsData = await statsRes.json();
-        setStats(statsData.data || statsData || {});
-      }
+      if (usersRes.ok) setUsers((await usersRes.json()).data || []);
+      if (articlesRes.ok) setArticles((await articlesRes.json()).data || []);
+      if (commandesRes.ok) setCommandes((await commandesRes.json()).data || []);
+      if (livraisonsRes.ok) setLivraisons((await livraisonsRes.json()).data || []);
+      if (clientsRes.ok) setClients((await clientsRes.json()).data || []);
+      if (postesRes.ok) setPostes((await postesRes.json()).data || []);
+      if (personnelRes.ok) setPersonnel((await personnelRes.json()).data || []);
+      if (statsRes.ok) setStats((await statsRes.json()).data || {});
     } catch (error) {
-      console.error('Erreur lors du chargement des données:', error);
+      showNotification('Erreur lors du chargement des données', 'error');
     }
     setLoading(false);
   };
 
+  // ========== GESTION UTILISATEURS (pkg_gestion_utilisateurs) ==========
   const handleSaveUser = async (e) => {
     e.preventDefault();
     const token = localStorage.getItem('token');
@@ -92,10 +75,8 @@ function AdminDashboard({ user, onLogout }) {
         ? `${API_URL}/users/modifier`
         : `${API_URL}/users/ajouter`;
       
-      const method = editingItem?.idpers ? 'PUT' : 'POST';
-      
       const response = await fetch(url, {
-        method,
+        method: editingItem?.idpers ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
@@ -103,19 +84,23 @@ function AdminDashboard({ user, onLogout }) {
         body: JSON.stringify(formData)
       });
 
-      if (response.ok) {
+      const data = await response.json();
+      if (data.success) {
+        showNotification(editingItem ? 'Utilisateur modifié' : 'Utilisateur créé');
         setShowForm(false);
         setEditingItem(null);
         setFormData({});
         fetchAllData();
+      } else {
+        showNotification(data.message, 'error');
       }
     } catch (error) {
-      console.error('Erreur:', error);
+      showNotification('Erreur: ' + error.message, 'error');
     }
   };
 
   const handleDeleteUser = async (idpers) => {
-    if (!window.confirm('Êtes-vous sûr?')) return;
+    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur?')) return;
     
     const token = localStorage.getItem('token');
     try {
@@ -124,14 +109,17 @@ function AdminDashboard({ user, onLogout }) {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
-      if (response.ok) {
+      const data = await response.json();
+      if (data.success) {
+        showNotification('Utilisateur supprimé');
         fetchAllData();
       }
     } catch (error) {
-      console.error('Erreur:', error);
+      showNotification('Erreur: ' + error.message, 'error');
     }
   };
 
+  // ========== GESTION ARTICLES ==========
   const handleSaveArticle = async (e) => {
     e.preventDefault();
     const token = localStorage.getItem('token');
@@ -141,10 +129,8 @@ function AdminDashboard({ user, onLogout }) {
         ? `${API_URL}/articles/modifier`
         : `${API_URL}/articles/ajouter`;
       
-      const method = editingItem?.refart ? 'PUT' : 'POST';
-      
       const response = await fetch(endpoint, {
-        method,
+        method: editingItem?.refart ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
@@ -152,14 +138,16 @@ function AdminDashboard({ user, onLogout }) {
         body: JSON.stringify(formData)
       });
 
-      if (response.ok) {
+      const data = await response.json();
+      if (data.success) {
+        showNotification(editingItem ? 'Article modifié' : 'Article créé');
         setShowForm(false);
         setEditingItem(null);
         setFormData({});
         fetchAllData();
       }
     } catch (error) {
-      console.error('Erreur:', error);
+      showNotification('Erreur: ' + error.message, 'error');
     }
   };
 
@@ -174,13 +162,15 @@ function AdminDashboard({ user, onLogout }) {
       });
 
       if (response.ok) {
+        showNotification('Article supprimé');
         fetchAllData();
       }
     } catch (error) {
-      console.error('Erreur:', error);
+      showNotification('Erreur: ' + error.message, 'error');
     }
   };
 
+  // ========== GESTION CLIENTS ==========
   const handleSaveClient = async (e) => {
     e.preventDefault();
     const token = localStorage.getItem('token');
@@ -190,10 +180,8 @@ function AdminDashboard({ user, onLogout }) {
         ? `${API_URL}/clients/modifier`
         : `${API_URL}/clients/ajouter`;
       
-      const method = editingItem?.noclt ? 'PUT' : 'POST';
-      
       const response = await fetch(endpoint, {
-        method,
+        method: editingItem?.noclt ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
@@ -201,14 +189,16 @@ function AdminDashboard({ user, onLogout }) {
         body: JSON.stringify(formData)
       });
 
-      if (response.ok) {
+      const data = await response.json();
+      if (data.success) {
+        showNotification(editingItem ? 'Client modifié' : 'Client créé');
         setShowForm(false);
         setEditingItem(null);
         setFormData({});
         fetchAllData();
       }
     } catch (error) {
-      console.error('Erreur:', error);
+      showNotification('Erreur: ' + error.message, 'error');
     }
   };
 
@@ -223,13 +213,15 @@ function AdminDashboard({ user, onLogout }) {
       });
 
       if (response.ok) {
+        showNotification('Client supprimé');
         fetchAllData();
       }
     } catch (error) {
-      console.error('Erreur:', error);
+      showNotification('Erreur: ' + error.message, 'error');
     }
   };
 
+  // ========== GESTION COMMANDES (pkg_gestion_commandes) ==========
   const handleChangeCommandeState = async (nocde, newState) => {
     const token = localStorage.getItem('token');
     try {
@@ -239,17 +231,19 @@ function AdminDashboard({ user, onLogout }) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ nocde, newetat: newState })
+        body: JSON.stringify({ nocde, nouvel_etat: newState })
       });
 
       if (response.ok) {
+        showNotification('État modifié avec succès');
         fetchAllData();
       }
     } catch (error) {
-      console.error('Erreur:', error);
+      showNotification('Erreur: ' + error.message, 'error');
     }
   };
 
+  // ========== GESTION LIVRAISONS (pkg_gestion_livraisons) ==========
   const handleChangeLivraisonState = async (nocde, dateliv, newState) => {
     const token = localStorage.getItem('token');
     try {
@@ -263,13 +257,31 @@ function AdminDashboard({ user, onLogout }) {
       });
 
       if (response.ok) {
+        showNotification('État de livraison modifié');
         fetchAllData();
-      } else {
-        alert('Erreur lors de la modification de la livraison');
       }
     } catch (error) {
-      console.error('Erreur:', error);
-      alert('Erreur: ' + error.message);
+      showNotification('Erreur: ' + error.message, 'error');
+    }
+  };
+
+  // ========== GESTION PRIVILÈGES (pkg_gestion_privileges) ==========
+  const handleCreerSchemas = async () => {
+    if (!window.confirm('Créer tous les schémas externes (vues)?')) return;
+    
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${API_URL}/privileges/creer-schemas`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        showNotification('Schémas externes créés avec succès');
+      }
+    } catch (error) {
+      showNotification('Erreur: ' + error.message, 'error');
     }
   };
 
@@ -283,36 +295,85 @@ function AdminDashboard({ user, onLogout }) {
     );
   };
 
-  // Render content based on active tab
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
         return (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid">
             <StatCard icon={<Users size={24} />} title="Utilisateurs" value={stats.totalUsers} color="blue" />
             <StatCard icon={<Package size={24} />} title="Articles" value={stats.totalArticles} color="green" />
             <StatCard icon={<ShoppingCart size={24} />} title="Commandes" value={stats.totalCommandes} color="yellow" />
             <StatCard icon={<Truck size={24} />} title="Livraisons" value={stats.totalLivraisons} color="purple" />
             <StatCard icon={<UserCheck size={24} />} title="Clients" value={stats.totalClients} color="indigo" />
             <StatCard icon={<Briefcase size={24} />} title="Postes" value={stats.totalPostes} color="pink" />
-            <StatCard icon={<Building2 size={24} />} title="Personnels" value={stats.totalPersonnel} color="cyan" />
+            <StatCard icon={<Building2 size={24} />} title="Personnel" value={stats.totalPersonnel} color="cyan" />
           </div>
         );
 
       case 'users':
-        return <UsersManagement users={users} onEdit={editUser} onDelete={handleDeleteUser} onAdd={() => addNewUser()} searchTerm={searchTerm} filteredData={filteredData} showForm={showForm} setShowForm={setShowForm} editingItem={editingItem} formData={formData} setFormData={setFormData} onSave={handleSaveUser} />;
+        return <UsersManagement 
+          users={users} 
+          postes={postes}
+          onEdit={(item) => { setEditingItem(item); setFormData(item); setShowForm(true); }} 
+          onDelete={handleDeleteUser} 
+          onAdd={() => { setEditingItem(null); setFormData({}); setShowForm(true); }}
+          searchTerm={searchTerm} 
+          filteredData={filteredData} 
+          showForm={showForm} 
+          setShowForm={setShowForm} 
+          editingItem={editingItem} 
+          formData={formData} 
+          setFormData={setFormData} 
+          onSave={handleSaveUser} 
+        />;
 
       case 'articles':
-        return <ArticlesManagement articles={articles} onEdit={editArticle} onDelete={handleDeleteArticle} onAdd={() => addNewArticle()} searchTerm={searchTerm} filteredData={filteredData} showForm={showForm} setShowForm={setShowForm} editingItem={editingItem} formData={formData} setFormData={setFormData} onSave={handleSaveArticle} />;
+        return <ArticlesManagement 
+          articles={articles} 
+          onEdit={(item) => { setEditingItem(item); setFormData(item); setShowForm(true); }} 
+          onDelete={handleDeleteArticle} 
+          onAdd={() => { setEditingItem(null); setFormData({}); setShowForm(true); }}
+          searchTerm={searchTerm} 
+          filteredData={filteredData} 
+          showForm={showForm} 
+          setShowForm={setShowForm} 
+          editingItem={editingItem} 
+          formData={formData} 
+          setFormData={setFormData} 
+          onSave={handleSaveArticle} 
+        />;
 
       case 'commandes':
-        return <CommandesManagement commandes={commandes} onStateChange={handleChangeCommandeState} searchTerm={searchTerm} filteredData={filteredData} />;
+        return <CommandesManagement 
+          commandes={commandes} 
+          onStateChange={handleChangeCommandeState} 
+          searchTerm={searchTerm} 
+          filteredData={filteredData} 
+        />;
 
       case 'livraisons':
-        return <LivraisonsManagement livraisons={livraisons} onStateChange={handleChangeLivraisonState} searchTerm={searchTerm} filteredData={filteredData} />;
+        return <LivraisonsManagement 
+          livraisons={livraisons} 
+          onStateChange={handleChangeLivraisonState} 
+          searchTerm={searchTerm} 
+          filteredData={filteredData} 
+        />;
 
       case 'clients':
-        return <ClientsManagement clients={clients} onEdit={editClient} onDelete={handleDeleteClient} onAdd={() => addNewClient()} searchTerm={searchTerm} filteredData={filteredData} showForm={showForm} setShowForm={setShowForm} editingItem={editingItem} formData={formData} setFormData={setFormData} onSave={handleSaveClient} />;
+        return <ClientsManagement 
+          clients={clients} 
+          onEdit={(item) => { setEditingItem(item); setFormData(item); setShowForm(true); }} 
+          onDelete={handleDeleteClient} 
+          onAdd={() => { setEditingItem(null); setFormData({}); setShowForm(true); }}
+          searchTerm={searchTerm} 
+          filteredData={filteredData} 
+          showForm={showForm} 
+          setShowForm={setShowForm} 
+          editingItem={editingItem} 
+          formData={formData} 
+          setFormData={setFormData} 
+          onSave={handleSaveClient} 
+        />;
 
       case 'postes':
         return <PostesManagement postes={postes} searchTerm={searchTerm} filteredData={filteredData} />;
@@ -320,55 +381,27 @@ function AdminDashboard({ user, onLogout }) {
       case 'personnel':
         return <PersonnelManagement personnel={personnel} postes={postes} searchTerm={searchTerm} filteredData={filteredData} />;
 
+      case 'privileges':
+        return <PrivilegesManagement postes={postes} onCreerSchemas={handleCreerSchemas} />;
+
       default:
         return null;
     }
   };
 
-  const editUser = (item) => {
-    setEditingItem(item);
-    setFormData(item);
-    setShowForm(true);
-  };
-
-  const addNewUser = () => {
-    setEditingItem(null);
-    setFormData({ login: '', nompers: '', prenompers: '', codeposte: '' });
-    setShowForm(true);
-  };
-
-  const editArticle = (item) => {
-    setEditingItem(item);
-    setFormData(item);
-    setShowForm(true);
-  };
-
-  const addNewArticle = () => {
-    setEditingItem(null);
-    setFormData({ libart: '', prixu: '', qtestock: '' });
-    setShowForm(true);
-  };
-
-  const editClient = (item) => {
-    setEditingItem(item);
-    setFormData(item);
-    setShowForm(true);
-  };
-
-  const addNewClient = () => {
-    setEditingItem(null);
-    setFormData({ nomclt: '', prenomclt: '', telclt: '', adrclt: '' });
-    setShowForm(true);
-  };
-
   return (
     <div className="admin-dashboard">
-      {/* Header */}
+      {notification && (
+        <div className={`notification ${notification.type}`}>
+          {notification.message}
+        </div>
+      )}
+
       <div className="admin-header">
         <div className="header-content">
           <h1 className="header-title">Admin Dashboard</h1>
           <div className="header-user">
-            <span>Bienvenue, {user.nompers || user.nomp} {user.prenompers || user.prenomp}</span>
+            <span>Bienvenue, {user.nompers} {user.prenompers}</span>
             <button onClick={onLogout} className="logout-btn">
               <LogOut size={20} /> Déconnexion
             </button>
@@ -376,7 +409,6 @@ function AdminDashboard({ user, onLogout }) {
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="admin-tabs">
         <TabButton icon={<Package size={20} />} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
         <TabButton icon={<Users size={20} />} label="Utilisateurs" active={activeTab === 'users'} onClick={() => setActiveTab('users')} />
@@ -386,10 +418,10 @@ function AdminDashboard({ user, onLogout }) {
         <TabButton icon={<UserCheck size={20} />} label="Clients" active={activeTab === 'clients'} onClick={() => setActiveTab('clients')} />
         <TabButton icon={<Briefcase size={20} />} label="Postes" active={activeTab === 'postes'} onClick={() => setActiveTab('postes')} />
         <TabButton icon={<Building2 size={20} />} label="Personnel" active={activeTab === 'personnel'} onClick={() => setActiveTab('personnel')} />
+        <TabButton icon={<Shield size={20} />} label="Privilèges" active={activeTab === 'privileges'} onClick={() => setActiveTab('privileges')} />
       </div>
 
-      {/* Search bar (except dashboard) */}
-      {activeTab !== 'dashboard' && (
+      {activeTab !== 'dashboard' && activeTab !== 'privileges' && (
         <div className="search-bar">
           <Search size={20} />
           <input
@@ -401,24 +433,17 @@ function AdminDashboard({ user, onLogout }) {
         </div>
       )}
 
-      {/* Main content */}
       <div className="admin-content">
-        {loading ? (
-          <div className="loading">Chargement...</div>
-        ) : (
-          renderContent()
-        )}
+        {loading ? <div className="loading">Chargement...</div> : renderContent()}
       </div>
     </div>
   );
 }
 
+// ========== COMPOSANTS ==========
 function TabButton({ icon, label, active, onClick }) {
   return (
-    <button
-      className={`tab-button ${active ? 'active' : ''}`}
-      onClick={onClick}
-    >
+    <button className={`tab-button ${active ? 'active' : ''}`} onClick={onClick}>
       {icon}
       <span>{label}</span>
     </button>
@@ -426,18 +451,8 @@ function TabButton({ icon, label, active, onClick }) {
 }
 
 function StatCard({ icon, title, value, color }) {
-  const colors = {
-    blue: 'bg-blue-50 border-blue-200',
-    green: 'bg-green-50 border-green-200',
-    yellow: 'bg-yellow-50 border-yellow-200',
-    purple: 'bg-purple-50 border-purple-200',
-    indigo: 'bg-indigo-50 border-indigo-200',
-    pink: 'bg-pink-50 border-pink-200',
-    cyan: 'bg-cyan-50 border-cyan-200'
-  };
-
   return (
-    <div className={`stat-card ${colors[color]}`}>
+    <div className={`stat-card bg-${color}-50 border-${color}-200`}>
       <div className="stat-icon">{icon}</div>
       <div className="stat-content">
         <h3>{title}</h3>
@@ -447,37 +462,38 @@ function StatCard({ icon, title, value, color }) {
   );
 }
 
-function UsersManagement({ users, onEdit, onDelete, onAdd, searchTerm, filteredData, showForm, setShowForm, editingItem, formData, setFormData, onSave }) {
+// Composants de gestion à ajouter dans AdminDashboard.js
+
+// ========== USERS MANAGEMENT ==========
+function UsersManagement({ users, postes, onEdit, onDelete, onAdd, searchTerm, filteredData, showForm, setShowForm, editingItem, formData, setFormData, onSave }) {
   const filtered = filteredData(users, ['login', 'nompers', 'prenompers']);
-  
-  // Trier par ID
   const sorted = [...filtered].sort((a, b) => (a.idpers || 0) - (b.idpers || 0));
 
   return (
     <div className="management-section">
       <div className="section-header">
-        <h2>Gestion des Utilisateurs</h2>
-        <span className="section-count">Total: {sorted.length}</span>
+        <h2>Gestion des Utilisateurs (pkg_gestion_utilisateurs)</h2>
         <button className="btn-primary" onClick={onAdd}>
-          <Plus size={20} /> Ajouter un utilisateur
+          <Plus size={20} /> Ajouter
         </button>
       </div>
 
       {showForm && (
         <FormModal 
-          title={editingItem ? 'Modifier l\'utilisateur' : 'Ajouter un utilisateur'}
+          title={editingItem ? 'Modifier' : 'Ajouter'}
           onClose={() => setShowForm(false)}
           onSubmit={onSave}
           formData={formData}
           setFormData={setFormData}
           fields={[
-            { name: 'login', label: 'Login', type: 'text', required: true },
             { name: 'nompers', label: 'Nom', type: 'text', required: true },
             { name: 'prenompers', label: 'Prénom', type: 'text', required: true },
-            { name: 'telpers', label: 'Téléphone', type: 'text', required: false },
-            { name: 'adrpers', label: 'Adresse', type: 'text', required: false },
-            { name: 'villepers', label: 'Ville', type: 'text', required: false },
-            { name: 'codeposte', label: 'Code Poste (P001/P002/P003)', type: 'text', required: true }
+            { name: 'adrpers', label: 'Adresse', type: 'text', required: true },
+            { name: 'villepers', label: 'Ville', type: 'text', required: true },
+            { name: 'telpers', label: 'Téléphone (8 chiffres)', type: 'text', required: true, maxLength: 8 },
+            { name: 'login', label: 'Login', type: 'text', required: true, disabled: !!editingItem },
+            { name: 'motP', label: 'Mot de passe', type: 'password', required: !editingItem },
+            { name: 'codeposte', label: 'Code Poste', type: 'select', required: true, options: postes.map(p => ({ value: p.codeposte, label: `${p.libposte} (${p.codeposte})` })) }
           ]}
         />
       )}
@@ -487,9 +503,8 @@ function UsersManagement({ users, onEdit, onDelete, onAdd, searchTerm, filteredD
           <tr>
             <th>ID</th>
             <th>Login</th>
-            <th>Nom Complet</th>
+            <th>Nom</th>
             <th>Téléphone</th>
-            <th>Adresse</th>
             <th>Ville</th>
             <th>Poste</th>
             <th>Actions</th>
@@ -498,16 +513,15 @@ function UsersManagement({ users, onEdit, onDelete, onAdd, searchTerm, filteredD
         <tbody>
           {sorted.map(user => (
             <tr key={user.idpers}>
-              <td><strong>{user.idpers}</strong></td>
+              <td>{user.idpers}</td>
               <td>{user.login}</td>
               <td>{user.nompers} {user.prenompers}</td>
-              <td>{user.telpers || '-'}</td>
-              <td>{user.adrpers || '-'}</td>
-              <td>{user.villepers || '-'}</td>
-              <td><span className="badge badge-pr">{user.codeposte}</span></td>
+              <td>{user.telpers}</td>
+              <td>{user.villepers}</td>
+              <td><span className="badge badge-pr">{user.poste_libelle}</span></td>
               <td>
-                <button className="btn-edit" onClick={() => onEdit(user)} title="Modifier"><Edit2 size={16} /></button>
-                <button className="btn-delete" onClick={() => onDelete(user.idpers)} title="Supprimer"><Trash2 size={16} /></button>
+                <button className="btn-edit" onClick={() => onEdit(user)}><Edit2 size={16} /></button>
+                <button className="btn-delete" onClick={() => onDelete(user.idpers)}><Trash2 size={16} /></button>
               </td>
             </tr>
           ))}
@@ -517,37 +531,35 @@ function UsersManagement({ users, onEdit, onDelete, onAdd, searchTerm, filteredD
   );
 }
 
+// ========== ARTICLES MANAGEMENT ==========
 function ArticlesManagement({ articles, onEdit, onDelete, onAdd, searchTerm, filteredData, showForm, setShowForm, editingItem, formData, setFormData, onSave }) {
-  const filtered = filteredData(articles, ['libart', 'refart', 'designation']);
-  
-  // Trier par référence
+  const filtered = filteredData(articles, ['refart', 'designation', 'categorie']);
   const sorted = [...filtered].sort((a, b) => (a.refart || '').localeCompare(b.refart || ''));
 
   return (
     <div className="management-section">
       <div className="section-header">
         <h2>Gestion des Articles</h2>
-        <span className="section-count">Total: {sorted.length}</span>
         <button className="btn-primary" onClick={onAdd}>
-          <Plus size={20} /> Ajouter un article
+          <Plus size={20} /> Ajouter
         </button>
       </div>
 
       {showForm && (
         <FormModal 
-          title={editingItem ? 'Modifier l\'article' : 'Ajouter un article'}
+          title={editingItem ? 'Modifier' : 'Ajouter'}
           onClose={() => setShowForm(false)}
           onSubmit={onSave}
           formData={formData}
           setFormData={setFormData}
           fields={[
-            { name: 'refart', label: 'Référence', type: 'text', required: !editingItem },
+            { name: 'refart', label: 'Référence', type: 'text', required: true, disabled: !!editingItem, maxLength: 4 },
             { name: 'designation', label: 'Désignation', type: 'text', required: true },
-            { name: 'prixA', label: 'Prix d\'Achat', type: 'number', required: true },
-            { name: 'prixV', label: 'Prix de Vente', type: 'number', required: true },
-            { name: 'categorie', label: 'Catégorie', type: 'text', required: false },
-            { name: 'qtestk', label: 'Quantité Stock', type: 'number', required: true },
-            { name: 'codetva', label: 'Code TVA', type: 'text', required: false }
+            { name: 'prixA', label: 'Prix Achat', type: 'number', required: true, step: '0.01' },
+            { name: 'prixV', label: 'Prix Vente', type: 'number', required: true, step: '0.01' },
+            { name: 'categorie', label: 'Catégorie', type: 'text' },
+            { name: 'qtestk', label: 'Stock', type: 'number', required: true },
+            { name: 'codetva', label: 'Code TVA', type: 'text' }
           ]}
         />
       )}
@@ -555,29 +567,27 @@ function ArticlesManagement({ articles, onEdit, onDelete, onAdd, searchTerm, fil
       <table className="data-table">
         <thead>
           <tr>
-            <th>Référence</th>
+            <th>Réf</th>
             <th>Désignation</th>
             <th>Catégorie</th>
             <th>Prix Achat</th>
             <th>Prix Vente</th>
             <th>Stock</th>
-            <th>TVA</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {sorted.map(article => (
-            <tr key={article.refart}>
-              <td><strong>{article.refart}</strong></td>
-              <td>{article.designation}</td>
-              <td>{article.categorie || '-'}</td>
-              <td className="text-right">{article.prixA || 0} DT</td>
-              <td className="text-right">{article.prixV || 0} DT</td>
-              <td><span className="badge badge-info">{article.qtestk}</span></td>
-              <td>{article.codetva || '-'}</td>
+          {sorted.map(art => (
+            <tr key={art.refart}>
+              <td>{art.refart}</td>
+              <td>{art.designation}</td>
+              <td>{art.categorie}</td>
+              <td>{art.prixA} DT</td>
+              <td>{art.prixV} DT</td>
+              <td><span className={`badge ${art.qtestk < 10 ? 'badge-an' : art.qtestk < 50 ? 'badge-ec' : 'badge-lv'}`}>{art.qtestk}</span></td>
               <td>
-                <button className="btn-edit" onClick={() => onEdit(article)} title="Modifier"><Edit2 size={16} /></button>
-                <button className="btn-delete" onClick={() => onDelete(article.refart)} title="Supprimer"><Trash2 size={16} /></button>
+                <button className="btn-edit" onClick={() => onEdit(art)}><Edit2 size={16} /></button>
+                <button className="btn-delete" onClick={() => onDelete(art.refart)}><Trash2 size={16} /></button>
               </td>
             </tr>
           ))}
@@ -587,37 +597,35 @@ function ArticlesManagement({ articles, onEdit, onDelete, onAdd, searchTerm, fil
   );
 }
 
+// ========== CLIENTS MANAGEMENT ==========
 function ClientsManagement({ clients, onEdit, onDelete, onAdd, searchTerm, filteredData, showForm, setShowForm, editingItem, formData, setFormData, onSave }) {
-  const filtered = filteredData(clients, ['nomclt', 'prenomclt', 'telclt', 'adrmail']);
-  
-  // Trier par numéro de client
+  const filtered = filteredData(clients, ['nomclt', 'prenomclt', 'telclt']);
   const sorted = [...filtered].sort((a, b) => (a.noclt || 0) - (b.noclt || 0));
 
   return (
     <div className="management-section">
       <div className="section-header">
         <h2>Gestion des Clients</h2>
-        <span className="section-count">Total: {sorted.length}</span>
         <button className="btn-primary" onClick={onAdd}>
-          <Plus size={20} /> Ajouter un client
+          <Plus size={20} /> Ajouter
         </button>
       </div>
 
       {showForm && (
         <FormModal 
-          title={editingItem ? 'Modifier le client' : 'Ajouter un client'}
+          title={editingItem ? 'Modifier' : 'Ajouter'}
           onClose={() => setShowForm(false)}
           onSubmit={onSave}
           formData={formData}
           setFormData={setFormData}
           fields={[
             { name: 'nomclt', label: 'Nom', type: 'text', required: true },
-            { name: 'prenomclt', label: 'Prénom', type: 'text', required: true },
-            { name: 'telclt', label: 'Téléphone', type: 'text', required: true },
-            { name: 'adrmail', label: 'Email', type: 'email', required: false },
-            { name: 'adrclt', label: 'Adresse', type: 'text', required: false },
-            { name: 'code_postal', label: 'Code Postal', type: 'text', required: false },
-            { name: 'villeclt', label: 'Ville', type: 'text', required: false }
+            { name: 'prenomclt', label: 'Prénom', type: 'text' },
+            { name: 'telclt', label: 'Téléphone (8 chiffres)', type: 'text', required: true, maxLength: 8 },
+            { name: 'adrmail', label: 'Email', type: 'email' },
+            { name: 'adrclt', label: 'Adresse', type: 'text', required: true },
+            { name: 'code_postal', label: 'Code Postal', type: 'text' },
+            { name: 'villeclt', label: 'Ville', type: 'text', required: true }
           ]}
         />
       )}
@@ -626,11 +634,9 @@ function ClientsManagement({ clients, onEdit, onDelete, onAdd, searchTerm, filte
         <thead>
           <tr>
             <th>N°</th>
-            <th>Nom Complet</th>
+            <th>Nom</th>
             <th>Téléphone</th>
             <th>Email</th>
-            <th>Adresse</th>
-            <th>Code Postal</th>
             <th>Ville</th>
             <th>Actions</th>
           </tr>
@@ -638,16 +644,14 @@ function ClientsManagement({ clients, onEdit, onDelete, onAdd, searchTerm, filte
         <tbody>
           {sorted.map(client => (
             <tr key={client.noclt}>
-              <td><strong>{client.noclt}</strong></td>
+              <td>{client.noclt}</td>
               <td>{client.nomclt} {client.prenomclt}</td>
-              <td>{client.telclt || '-'}</td>
-              <td>{client.adrmail || '-'}</td>
-              <td>{client.adrclt || '-'}</td>
-              <td>{client.code_postal || '-'}</td>
-              <td>{client.villeclt || '-'}</td>
+              <td>{client.telclt}</td>
+              <td>{client.adrmail}</td>
+              <td>{client.villeclt}</td>
               <td>
-                <button className="btn-edit" onClick={() => onEdit(client)} title="Modifier"><Edit2 size={16} /></button>
-                <button className="btn-delete" onClick={() => onDelete(client.noclt)} title="Supprimer"><Trash2 size={16} /></button>
+                <button className="btn-edit" onClick={() => onEdit(client)}><Edit2 size={16} /></button>
+                <button className="btn-delete" onClick={() => onDelete(client.noclt)}><Trash2 size={16} /></button>
               </td>
             </tr>
           ))}
@@ -657,17 +661,15 @@ function ClientsManagement({ clients, onEdit, onDelete, onAdd, searchTerm, filte
   );
 }
 
+// ========== COMMANDES MANAGEMENT ==========
 function CommandesManagement({ commandes, onStateChange, searchTerm, filteredData }) {
   const filtered = filteredData(commandes, ['nocde', 'nomclt', 'etatcde']);
-
-  // Trier par date décroissante
   const sorted = [...filtered].sort((a, b) => new Date(b.datecde) - new Date(a.datecde));
 
   return (
     <div className="management-section">
       <div className="section-header">
-        <h2>Gestion des Commandes</h2>
-        <span className="section-count">Total: {sorted.length} commande(s)</span>
+        <h2>Gestion des Commandes (pkg_gestion_commandes)</h2>
       </div>
 
       <table className="data-table">
@@ -684,10 +686,10 @@ function CommandesManagement({ commandes, onStateChange, searchTerm, filteredDat
         <tbody>
           {sorted.map(cmd => (
             <tr key={cmd.nocde}>
-              <td><strong>{cmd.nocde}</strong></td>
+              <td>{cmd.nocde}</td>
               <td>{cmd.nomclt} {cmd.prenomclt}</td>
               <td>{new Date(cmd.datecde).toLocaleDateString('fr-FR')}</td>
-              <td className="text-right">{cmd.montant_total} DT</td>
+              <td>{cmd.montant_total} DT</td>
               <td>
                 <select 
                   value={cmd.etatcde || 'EC'} 
@@ -696,12 +698,15 @@ function CommandesManagement({ commandes, onStateChange, searchTerm, filteredDat
                 >
                   <option value="EC">EC - En Cours</option>
                   <option value="PR">PR - Prête</option>
-                  <option value="LV">LV - Livrée</option>
+                  <option value="LI">LI - Livrée</option>
+                  <option value="SO">SO - Soldée</option>
                   <option value="AN">AN - Annulée</option>
                 </select>
               </td>
               <td>
-                <span className={`badge badge-${(cmd.etatcde || 'EC').toLowerCase()}`}>{cmd.etatcde || 'EC'}</span>
+                <span className={`badge badge-${(cmd.etatcde || 'EC').toLowerCase()}`}>
+                  {cmd.etatcde || 'EC'}
+                </span>
               </td>
             </tr>
           ))}
@@ -711,21 +716,15 @@ function CommandesManagement({ commandes, onStateChange, searchTerm, filteredDat
   );
 }
 
+// ========== LIVRAISONS MANAGEMENT ==========
 function LivraisonsManagement({ livraisons, onStateChange, searchTerm, filteredData }) {
   const filtered = filteredData(livraisons, ['nocde', 'nomclt', 'etatliv']);
-
-  // Trier par date de livraison décroissante
-  const sorted = [...filtered].sort((a, b) => {
-    const dateA = new Date(a.dateliv || 0);
-    const dateB = new Date(b.dateliv || 0);
-    return dateB - dateA;
-  });
+  const sorted = [...filtered].sort((a, b) => new Date(b.dateliv) - new Date(a.dateliv));
 
   return (
     <div className="management-section">
       <div className="section-header">
-        <h2>Gestion des Livraisons</h2>
-        <span className="section-count">Total: {sorted.length} | En cours: {sorted.filter(l => l.etatliv === 'LI').length}</span>
+        <h2>Gestion des Livraisons (pkg_gestion_livraisons)</h2>
       </div>
 
       <table className="data-table">
@@ -733,10 +732,8 @@ function LivraisonsManagement({ livraisons, onStateChange, searchTerm, filteredD
           <tr>
             <th>N° Commande</th>
             <th>Client</th>
-            <th>Date Commande</th>
             <th>Date Livraison</th>
             <th>Livreur</th>
-            <th>Mode Paiement</th>
             <th>État</th>
             <th>Actions</th>
           </tr>
@@ -744,16 +741,10 @@ function LivraisonsManagement({ livraisons, onStateChange, searchTerm, filteredD
         <tbody>
           {sorted.map(liv => (
             <tr key={`${liv.nocde}-${liv.dateliv}`}>
-              <td><strong>{liv.nocde}</strong></td>
+              <td>{liv.nocde}</td>
               <td>{liv.nomclt} {liv.prenomclt}</td>
-              <td>{new Date(liv.datecde).toLocaleDateString('fr-FR')}</td>
-              <td><strong>{new Date(liv.dateliv).toLocaleDateString('fr-FR')}</strong></td>
-              <td>{liv.livreur_prenom} {liv.livreur_nom}</td>
-              <td>
-                <span className="badge badge-info">
-                  {liv.modepay === 'avant_livraison' ? 'Avant' : 'Après'}
-                </span>
-              </td>
+              <td>{new Date(liv.dateliv).toLocaleDateString('fr-FR')}</td>
+              <td>{liv.livreur_nom} {liv.livreur_prenom}</td>
               <td>
                 <select 
                   value={liv.etatliv || 'EC'} 
@@ -781,6 +772,7 @@ function LivraisonsManagement({ livraisons, onStateChange, searchTerm, filteredD
   );
 }
 
+// ========== POSTES & PERSONNEL ==========
 function PostesManagement({ postes, searchTerm, filteredData }) {
   const filtered = filteredData(postes, ['codeposte', 'libposte']);
 
@@ -789,19 +781,16 @@ function PostesManagement({ postes, searchTerm, filteredData }) {
       <div className="section-header">
         <h2>Gestion des Postes</h2>
       </div>
-
       <table className="data-table">
         <thead>
-          <tr>
-            <th>Code Poste</th>
-            <th>Libellé</th>
-          </tr>
+          <tr><th>Code</th><th>Libellé</th><th>Indice</th></tr>
         </thead>
         <tbody>
-          {filtered.map(poste => (
-            <tr key={poste.codeposte}>
-              <td>{poste.codeposte}</td>
-              <td>{poste.libposte}</td>
+          {filtered.map(p => (
+            <tr key={p.codeposte}>
+              <td>{p.codeposte}</td>
+              <td>{p.libposte}</td>
+              <td>{p.indice}</td>
             </tr>
           ))}
         </tbody>
@@ -818,23 +807,17 @@ function PersonnelManagement({ personnel, postes, searchTerm, filteredData }) {
       <div className="section-header">
         <h2>Gestion du Personnel</h2>
       </div>
-
       <table className="data-table">
         <thead>
-          <tr>
-            <th>ID</th>
-            <th>Nom</th>
-            <th>Prénom</th>
-            <th>Poste</th>
-          </tr>
+          <tr><th>ID</th><th>Nom</th><th>Prénom</th><th>Poste</th></tr>
         </thead>
         <tbody>
-          {filtered.map(pers => (
-            <tr key={pers.idpers}>
-              <td>{pers.idpers}</td>
-              <td>{pers.nompers}</td>
-              <td>{pers.prenompers}</td>
-              <td>{pers.codeposte}</td>
+          {filtered.map(p => (
+            <tr key={p.idpers}>
+              <td>{p.idpers}</td>
+              <td>{p.nompers}</td>
+              <td>{p.prenompers}</td>
+              <td>{p.poste_libelle}</td>
             </tr>
           ))}
         </tbody>
@@ -843,28 +826,118 @@ function PersonnelManagement({ personnel, postes, searchTerm, filteredData }) {
   );
 }
 
+// ========== PRIVILEGES MANAGEMENT ==========
+function PrivilegesManagement({ postes, onCreerSchemas }) {
+  const [formPriv, setFormPriv] = useState({ username: '', codeposte: '' });
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await fetch(`${API_URL}/privileges/gerer-par-poste`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(formPriv)
+      });
+      if (response.ok) {
+        alert('Privilèges accordés avec succès');
+        setFormPriv({ username: '', codeposte: '' });
+      }
+    } catch (error) {
+      alert('Erreur: ' + error.message);
+    }
+  };
+
+  return (
+    <div className="management-section">
+      <div className="section-header">
+        <h2>Gestion des Privilèges (pkg_gestion_privileges)</h2>
+      </div>
+
+      <div className="grid" style={{gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '2rem'}}>
+        <div className="card">
+          <h3>Créer les Schémas Externes</h3>
+          <p>Crée toutes les vues nécessaires pour les différents rôles</p>
+          <button onClick={onCreerSchemas} className="btn-primary" style={{marginTop: '1rem'}}>
+            <Database size={20} /> Créer les Schémas
+          </button>
+        </div>
+
+        <div className="card">
+          <h3>Accorder Privilèges</h3>
+          <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label>Username Oracle</label>
+              <input 
+                type="text" 
+                value={formPriv.username}
+                onChange={(e) => setFormPriv({...formPriv, username: e.target.value})}
+                required 
+              />
+            </div>
+            <div className="form-group">
+              <label>Poste</label>
+              <select 
+                value={formPriv.codeposte}
+                onChange={(e) => setFormPriv({...formPriv, codeposte: e.target.value})}
+                required
+              >
+                <option value="">Sélectionner...</option>
+                {postes.map(p => (
+                  <option key={p.codeposte} value={p.codeposte}>{p.libposte}</option>
+                ))}
+              </select>
+            </div>
+            <button type="submit" className="btn-primary">
+              <Shield size={20} /> Accorder Privilèges
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ========== FORM MODAL ==========
 function FormModal({ title, onClose, onSubmit, formData, setFormData, fields }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>{title}</h3>
-          <button className="modal-close" onClick={onClose}>
-            <X size={24} />
-          </button>
+          <button className="modal-close" onClick={onClose}><X size={24} /></button>
         </div>
 
         <form onSubmit={onSubmit} className="form-body">
           {fields.map(field => (
             <div key={field.name} className="form-group">
               <label>{field.label}</label>
-              <input
-                type={field.type || 'text'}
-                name={field.name}
-                value={formData[field.name] || ''}
-                onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
-                required={field.required}
-              />
+              {field.type === 'select' ? (
+                <select
+                  name={field.name}
+                  value={formData[field.name] || ''}
+                  onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
+                  required={field.required}
+                >
+                  <option value="">Sélectionner...</option>
+                  {field.options?.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type={field.type || 'text'}
+                  name={field.name}
+                  value={formData[field.name] || ''}
+                  onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
+                  required={field.required}
+                  disabled={field.disabled}
+                  maxLength={field.maxLength}
+                  step={field.step}
+                />
+              )}
             </div>
           ))}
 
