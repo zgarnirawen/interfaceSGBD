@@ -344,7 +344,7 @@ const TriggerManager = () => {
                 </div>
 
                 <div className="form-group">
-                  <label>Prix Vente * (doit être > Prix Achat)</label>
+                  <label>Prix Vente * (doit être &gt; Prix Achat)</label>
                   <input 
                     type="number" 
                     name="prixV" 

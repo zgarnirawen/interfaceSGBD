@@ -1,0 +1,90 @@
+INSTRUCTIONS - CORRIGER LES COMPTES UTILISATEURS
+================================================
+
+PROBLÈME: Seul le magasinier (sami.b) fonctionne, admin et chef ne fonctionnent pas
+
+SOLUTION: Exécuter le script FIX_USERS.sql
+
+ÉTAPES:
+═════════
+
+1️⃣ OUVRIR SQL Developer
+
+2️⃣ SE CONNECTER À:
+   Utilisateur: SYSTEM
+   Mot de passe: rawen123
+   Host: localhost
+   Port: 1521
+   Service: orcl
+
+3️⃣ OUVRIR LE FICHIER:
+   Ouvrir C:\Users\ZGARNI\oracle-test-app\FIX_USERS.sql
+
+4️⃣ EXÉCUTER:
+   Appuyer sur F5 ou cliquer "Exécute"
+
+5️⃣ VÉRIFIER LE RÉSULTAT:
+   Vous devriez voir:
+   ✅ Admin créé avec login: admin
+   ✅ Chef créé avec login: chef
+   ✅ Magasinier existe déjà
+
+6️⃣ RELANCER LE SERVEUR:
+   npm run dev
+
+7️⃣ TESTER LES 3 COMPTES:
+   
+   Compte 1:
+   ├─ Login: admin
+   ├─ Mot de passe: pass1234
+   └─ Rôle: Administrateur
+   
+   Compte 2:
+   ├─ Login: chef
+   ├─ Mot de passe: pass1234
+   └─ Rôle: Chef Livreur
+   
+   Compte 3:
+   ├─ Login: sami.b
+   ├─ Mot de passe: pass1234
+   └─ Rôle: Magasinier
+
+
+ALTERNATIVE (si SQL Developer ne marche pas):
+═════════════════════════════════════════════
+
+Copier-coller ceci dans SQL Developer (sans lire le fichier):
+
+───────────────────────────────────────────────
+
+-- Créer Admin
+BEGIN
+  DECLARE v_count NUMBER;
+  BEGIN
+    SELECT COUNT(*) INTO v_count FROM personnel WHERE login = 'admin';
+    IF v_count = 0 THEN
+      INSERT INTO personnel (idpers, nompers, prenompers, adrpers, villepers, telpers, d_embauche, login, codeposte)
+      VALUES (1, 'Admin', 'Système', '123 rue Admin', 'Tunis', '21600000', SYSDATE, 'admin', 'P002');
+    END IF;
+  END;
+END;
+/
+
+-- Créer Chef
+BEGIN
+  DECLARE v_count NUMBER;
+  BEGIN
+    SELECT COUNT(*) INTO v_count FROM personnel WHERE login = 'chef';
+    IF v_count = 0 THEN
+      INSERT INTO personnel (idpers, nompers, prenompers, adrpers, villepers, telpers, d_embauche, login, codeposte)
+      VALUES (2, 'Chef', 'Livreur', '456 rue Chef', 'Sfax', '21611111', SYSDATE, 'chef', 'P003');
+    END IF;
+  END;
+END;
+/
+
+COMMIT;
+
+───────────────────────────────────────────────
+
+Puis appuyer sur F5

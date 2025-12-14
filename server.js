@@ -426,7 +426,19 @@ app.get('/api/commandes', async (req, res) => {
        GROUP BY c.nocde, c.datecde, c.etatcde, c.noclt, cl.nomclt, cl.prenomclt
        ORDER BY c.datecde DESC`
     );
-    res.json({ success: true, data: result.rows });
+    
+    // Convertir result.rows en objets
+    const commandes = result.rows.map(row => ({
+      nocde: row[0],
+      datecde: row[1],
+      etatcde: row[2],
+      noclt: row[3],
+      nomclt: row[4],
+      prenomclt: row[5],
+      montant_total: row[6]
+    }));
+    
+    res.json({ success: true, data: commandes });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   } finally {
@@ -612,17 +624,39 @@ app.get('/api/livraisons', async (req, res) => {
   let connection;
   try {
     connection = await pool.getConnection();
+    // Utiliser la table LivraisonCom avec les informations complètes
     const result = await connection.execute(
-      `SELECT lv.nocde, lv.dateliv, lv.livreur, lv.modepay, lv.etatliv,
-              p.nompers, p.prenompers, 
-              c.noclt, cl.nomclt, cl.prenomclt
-       FROM LivraisonCom lv
-       JOIN personnel p ON lv.livreur = p.idpers
-       JOIN commandes c ON lv.nocde = c.nocde
+      `SELECT lc.nocde, lc.dateliv, lc.modepay, lc.etatliv,
+              c.datecde, c.etatcde, c.noclt,
+              cl.nomclt, cl.prenomclt, cl.telclt, cl.adrclt, cl.code_postal, cl.villeclt,
+              p.nompers, p.prenompers
+       FROM LivraisonCom lc
+       JOIN commandes c ON lc.nocde = c.nocde
        JOIN clients cl ON c.noclt = cl.noclt
-       ORDER BY lv.dateliv DESC`
+       JOIN personnel p ON lc.livreur = p.idpers
+       ORDER BY lc.dateliv DESC`
     );
-    res.json({ success: true, data: result.rows });
+    
+    // Convertir result.rows en objets
+    const livraisons = result.rows.map(row => ({
+      nocde: row[0],
+      dateliv: row[1],
+      modepay: row[2],
+      etatliv: row[3],
+      datecde: row[4],
+      etatcde: row[5],
+      noclt: row[6],
+      nomclt: row[7],
+      prenomclt: row[8],
+      telclt: row[9],
+      adrclt: row[10],
+      code_postal: row[11],
+      villeclt: row[12],
+      livreur_nom: row[13],
+      livreur_prenom: row[14]
+    }));
+    
+    res.json({ success: true, data: livraisons });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   } finally {
@@ -657,22 +691,23 @@ app.post('/api/livraisons/ajouter', async (req, res) => {
 app.put('/api/livraisons/modifier', async (req, res) => {
   let connection;
   try {
-    const { nocde, nouvelle_date, nouveau_livreur } = req.body;
+    const { nocde, etatliv, dateliv } = req.body;
     connection = await pool.getConnection();
     
+    // Vérifier que dateliv est fourni (clé primaire de LivraisonCom)
+    if (!dateliv) {
+      return res.status(400).json({ success: false, message: 'La date de livraison est requise' });
+    }
+    
     await connection.execute(
-      `BEGIN
-        pkg_gestion_livraisons.modifier_livraison(
-          :nocde, 
-          ${nouvelle_date ? "TO_DATE(:nouvelle_date, 'YYYY-MM-DD')" : 'NULL'},
-          ${nouveau_livreur ? ':nouveau_livreur' : 'NULL'}
-        );
-      END;`,
-      { nocde, nouvelle_date, nouveau_livreur },
+      `UPDATE LivraisonCom 
+       SET etatliv = :etatliv
+       WHERE nocde = :nocde AND dateliv = TO_DATE(:dateliv, 'YYYY-MM-DD')`,
+      { nocde, etatliv, dateliv },
       { autoCommit: true }
     );
     
-    res.json({ success: true, message: 'Livraison modifiée avec succès' });
+    res.json({ success: true, message: 'État de livraison modifié avec succès' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   } finally {
@@ -755,7 +790,22 @@ app.get('/api/users', async (req, res) => {
        WHERE p.login NOT LIKE '%_INACTIF_%'
        ORDER BY po.libelle, p.nompers`
     );
-    res.json({ success: true, data: result.rows });
+    
+    // Convertir result.rows en objets
+    const users = result.rows.map(row => ({
+      idpers: row[0],
+      nompers: row[1],
+      prenompers: row[2],
+      adrpers: row[3],
+      villepers: row[4],
+      telpers: row[5],
+      d_embauche: row[6],
+      login: row[7],
+      codeposte: row[8],
+      poste_libelle: row[9]
+    }));
+    
+    res.json({ success: true, data: users });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   } finally {
@@ -1101,7 +1151,22 @@ app.get('/api/personnel', async (req, res) => {
        JOIN postes po ON p.codeposte = po.codeposte
        ORDER BY p.nompers`
     );
-    res.json({ success: true, data: result.rows });
+    
+    // Convertir result.rows en objets
+    const personnel = result.rows.map(row => ({
+      idpers: row[0],
+      nompers: row[1],
+      prenompers: row[2],
+      adrpers: row[3],
+      villepers: row[4],
+      telpers: row[5],
+      d_embauche: row[6],
+      login: row[7],
+      codeposte: row[8],
+      poste_libelle: row[9]
+    }));
+    
+    res.json({ success: true, data: personnel });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   } finally {
@@ -1117,7 +1182,150 @@ app.get('/api/postes', async (req, res) => {
     const result = await connection.execute(
       `SELECT codeposte, libelle, indice FROM postes ORDER BY libelle`
     );
-    res.json({ success: true, data: result.rows });
+    const postes = result.rows.map(row => ({
+      codeposte: row[0],
+      libposte: row[1],
+      indice: row[2]
+    }));
+    res.json({ success: true, data: postes });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// ==================== GESTION DES CLIENTS ====================
+
+// Ajouter client
+app.post('/api/clients/ajouter', authMiddleware, async (req, res) => {
+  let connection;
+  try {
+    const { nomclt, prenomclt, telclt, adrclt, code_postal, villeclt, adrmail } = req.body;
+    connection = await pool.getConnection();
+    
+    const result = await connection.execute(
+      `INSERT INTO clients (nomclt, prenomclt, telclt, adrclt, code_postal, villeclt, adrmail)
+       VALUES (:nomclt, :prenomclt, :telclt, :adrclt, :code_postal, :villeclt, :adrmail)`,
+      { nomclt, prenomclt, telclt, adrclt, code_postal, villeclt, adrmail },
+      { autoCommit: true }
+    );
+    
+    res.json({ success: true, message: 'Client ajouté avec succès' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Modifier client
+app.put('/api/clients/modifier', authMiddleware, async (req, res) => {
+  let connection;
+  try {
+    const { noclt, nomclt, prenomclt, telclt, adrclt, code_postal, villeclt, adrmail } = req.body;
+    connection = await pool.getConnection();
+    
+    await connection.execute(
+      `UPDATE clients 
+       SET nomclt = :nomclt, prenomclt = :prenomclt, telclt = :telclt, 
+           adrclt = :adrclt, code_postal = :code_postal, villeclt = :villeclt, adrmail = :adrmail
+       WHERE noclt = :noclt`,
+      { noclt, nomclt, prenomclt, telclt, adrclt, code_postal, villeclt, adrmail },
+      { autoCommit: true }
+    );
+    
+    res.json({ success: true, message: 'Client modifié avec succès' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Supprimer client
+app.delete('/api/clients/supprimer/:noclt', authMiddleware, async (req, res) => {
+  let connection;
+  try {
+    const noclt = parseInt(req.params.noclt);
+    connection = await pool.getConnection();
+    
+    await connection.execute(
+      `DELETE FROM clients WHERE noclt = :noclt`,
+      { noclt },
+      { autoCommit: true }
+    );
+    
+    res.json({ success: true, message: 'Client supprimé avec succès' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// ==================== GESTION DES ARTICLES ====================
+
+// Ajouter article
+app.post('/api/articles/ajouter', authMiddleware, async (req, res) => {
+  let connection;
+  try {
+    const { refart, designation, prixA, prixV, codetva, categorie, qtestk } = req.body;
+    connection = await pool.getConnection();
+    
+    await connection.execute(
+      `INSERT INTO articles (refart, designation, prixA, prixV, codetva, categorie, qtestk, supp)
+       VALUES (:refart, :designation, :prixA, :prixV, :codetva, :categorie, :qtestk, 'N')`,
+      { refart, designation, prixA, prixV, codetva, categorie, qtestk },
+      { autoCommit: true }
+    );
+    
+    res.json({ success: true, message: 'Article ajouté avec succès' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Modifier article
+app.put('/api/articles/modifier', authMiddleware, async (req, res) => {
+  let connection;
+  try {
+    const { refart, designation, prixA, prixV, codetva, categorie, qtestk } = req.body;
+    connection = await pool.getConnection();
+    
+    await connection.execute(
+      `UPDATE articles 
+       SET designation = :designation, prixA = :prixA, prixV = :prixV, 
+           codetva = :codetva, categorie = :categorie, qtestk = :qtestk
+       WHERE refart = :refart`,
+      { refart, designation, prixA, prixV, codetva, categorie, qtestk },
+      { autoCommit: true }
+    );
+    
+    res.json({ success: true, message: 'Article modifié avec succès' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Supprimer article
+app.delete('/api/articles/supprimer/:refart', authMiddleware, async (req, res) => {
+  let connection;
+  try {
+    const refart = req.params.refart;
+    connection = await pool.getConnection();
+    
+    await connection.execute(
+      `UPDATE articles SET supp = 'Y' WHERE refart = :refart`,
+      { refart },
+      { autoCommit: true }
+    );
+    
+    res.json({ success: true, message: 'Article supprimé avec succès' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   } finally {
@@ -1139,11 +1347,25 @@ app.get('/api/stats/global', async (req, res) => {
         (SELECT COUNT(*) FROM LivraisonCom) AS nb_livraisons,
         (SELECT COUNT(*) FROM personnel WHERE login NOT LIKE '%_INACTIF_%') AS nb_users,
         (SELECT COUNT(*) FROM articles WHERE supp = 'N') AS nb_articles,
-        (SELECT COUNT(*) FROM clients) AS nb_clients
+        (SELECT COUNT(*) FROM clients) AS nb_clients,
+        (SELECT COUNT(*) FROM postes) AS nb_postes,
+        (SELECT COUNT(*) FROM personnel) AS nb_personnel
        FROM dual`
     );
     
-    res.json({ success: true, data: stats.rows[0] });
+    const row = stats.rows[0];
+    res.json({ 
+      success: true, 
+      data: {
+        totalUsers: row[2],
+        totalArticles: row[3],
+        totalCommandes: row[0],
+        totalLivraisons: row[1],
+        totalClients: row[4],
+        totalPostes: row[5],
+        totalPersonnel: row[6]
+      }
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   } finally {

@@ -1,14 +1,10 @@
 -- ====== FIX: Trigger TRG_AUDIT_COMMANDES ======
 -- Ce script corrige l'erreur ORA-04098 en créant la table AUDIT_COMMANDES manquante
 
-SET ECHO ON;
-SET FEEDBACK ON;
-
 -- ============================================
 -- ÉTAPE 1: DÉSACTIVER LE TRIGGER INVALIDE
 -- ============================================
 ALTER TRIGGER trg_audit_commandes DISABLE;
-PROMPT ✅ Trigger TRG_AUDIT_COMMANDES désactivé temporairement;
 
 -- ============================================
 -- ÉTAPE 2: CRÉER LA TABLE AUDIT_COMMANDES
@@ -33,7 +29,7 @@ BEGIN
           CONSTRAINT pk_audit_commandes PRIMARY KEY (id_audit)
         )
       ';
-      PROMPT ✅ Table AUDIT_COMMANDES créée avec succès;
+      DBMS_OUTPUT.PUT_LINE('✅ Table AUDIT_COMMANDES créée avec succès');
       
       EXECUTE IMMEDIATE '
         CREATE SEQUENCE seq_audit_commandes
@@ -41,9 +37,9 @@ BEGIN
         INCREMENT BY 1
         CACHE 20
       ';
-      PROMPT ✅ Séquence seq_audit_commandes créée;
+      DBMS_OUTPUT.PUT_LINE('✅ Séquence seq_audit_commandes créée');
     ELSE
-      PROMPT ✅ Table AUDIT_COMMANDES existe déjà;
+      DBMS_OUTPUT.PUT_LINE('✅ Table AUDIT_COMMANDES existe déjà');
     END IF;
   EXCEPTION
     WHEN OTHERS THEN
@@ -86,52 +82,21 @@ BEGIN
   END;
 END trg_audit_commandes;
 /
-PROMPT ✅ Trigger TRG_AUDIT_COMMANDES créé avec succès;
 
 -- ============================================
 -- ÉTAPE 4: RÉACTIVER LE TRIGGER
 -- ============================================
 ALTER TRIGGER trg_audit_commandes ENABLE;
-PROMPT ✅ Trigger TRG_AUDIT_COMMANDES réactivé;
 
 -- ============================================
--- ÉTAPE 5: VÉRIFIER QUE LE TRIGGER EST VALIDE
+-- ÉTAPE 5: COMMIT
 -- ============================================
-BEGIN
-  DECLARE
-    v_trigger_status VARCHAR2(30);
-  BEGIN
-    SELECT status INTO v_trigger_status
-    FROM user_triggers
-    WHERE trigger_name = 'TRG_AUDIT_COMMANDES';
-    
-    IF v_trigger_status = 'VALID' THEN
-      PROMPT ✅ SUCCÈS: Trigger TRG_AUDIT_COMMANDES est maintenant VALIDE;
-    ELSE
-      PROMPT ❌ ERREUR: Trigger TRG_AUDIT_COMMANDES est ' || v_trigger_status;
-    END IF;
-  EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-      PROMPT ❌ ERREUR: Trigger TRG_AUDIT_COMMANDES introuvable;
-  END;
-END;
-/
+COMMIT;
 
 -- ============================================
 -- ÉTAPE 6: VÉRIFIER L'INTÉGRITÉ DES DONNÉES
 -- ============================================
-PROMPT;
-PROMPT ===== VÉRIFICATIONS FINALES =====;
-PROMPT;
-
-SELECT COUNT(*) as "Nombre de records AUDIT_COMMANDES" FROM audit_commandes;
-SELECT COUNT(*) as "Nombre de COMMANDES" FROM commandes;
-SELECT DISTINCT etatcde FROM commandes ORDER BY etatcde;
-
-PROMPT;
-PROMPT ====== FIX APPLIQUÉ AVEC SUCCÈS ======;
-PROMPT;
-PROMPT Les modifications d'état de commande fonctionneront maintenant sans erreur ORA-04098;
-PROMPT;
-
-COMMIT;
+-- Les commandes suivantes peuvent être exécutées séparément pour vérifier :
+-- SELECT COUNT(*) as "Nombre de records AUDIT_COMMANDES" FROM audit_commandes;
+-- SELECT COUNT(*) as "Nombre de COMMANDES" FROM commandes;
+-- SELECT DISTINCT etatcde FROM commandes ORDER BY etatcde;
